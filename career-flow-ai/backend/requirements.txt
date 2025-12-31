@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-dotenv
+langgraph
+langchain
+google-generativeai
+supabase
+pypdf
+tavily-python
+pydantic
