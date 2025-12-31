@@ -317,3 +317,85 @@ def upload_resume_to_storage(pdf_path: str, user_id: str, expires_in: int = 8640
     print(f"   📎 Signed URL: {signed_url[:80]}...")
     
     return signed_url
+
+
+def generate_application_responses(
+    user_profile: dict,
+    job_description: str,
+    company_name: str,
+    job_title: str,
+    additional_context: str = None
+) -> dict:
+    """
+    Generates copy-paste ready responses for common job application questions.
+    
+    Args:
+        user_profile: User's profile data from Supabase.
+        job_description: Target job description.
+        company_name: Name of the company.
+        job_title: Title of the position.
+        additional_context: Any additional context.
+    
+    Returns:
+        Dictionary with responses to all common application questions.
+    """
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash",
+        google_api_key=os.getenv("GEMINI_API_KEY"),
+        temperature=0.4
+    )
+    
+    json_parser = JsonOutputParser()
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", """You are an expert career coach helping candidates write compelling job application responses.
+
+Generate personalized, professional, and authentic responses for common job application questions.
+
+RULES:
+1. Use the candidate's actual experience and skills - DO NOT fabricate.
+2. Tailor each response specifically to the company and role.
+3. Keep responses concise but impactful (2-4 paragraphs each).
+4. Use professional tone with enthusiasm.
+5. Include specific examples from the candidate's background.
+6. Make responses copy-paste ready.
+
+OUTPUT FORMAT - Return ONLY valid JSON with this exact structure:
+{{
+    "why_join_company": "Response to: Why do you want to join this company?",
+    "about_yourself": "Response to: Tell us about yourself / Professional summary",
+    "relevant_skills": "Response to: What relevant skills and technical expertise do you have?",
+    "work_experience": "Response to: Describe your work experience and key achievements",
+    "why_good_fit": "Response to: Why are you a good fit for this role?",
+    "problem_solving": "Response to: Describe a problem you solved or challenge you faced",
+    "additional_info": "Response to: Is there any additional information you'd like to share?",
+    "availability": "Response to: What is your availability, location preferences, or other logistics?"
+}}
+
+No additional text - ONLY the JSON."""),
+        ("human", """Candidate Profile:
+{user_profile}
+
+Company: {company_name}
+Position: {job_title}
+
+Job Description:
+{job_description}
+
+Additional Context:
+{additional_context}
+
+Generate personalized, copy-paste ready responses for all common application questions.""")
+    ])
+    
+    chain = prompt | llm | json_parser
+    
+    responses = chain.invoke({
+        "user_profile": json.dumps(user_profile, indent=2),
+        "company_name": company_name,
+        "job_title": job_title,
+        "job_description": job_description,
+        "additional_context": additional_context or "None provided"
+    })
+    
+    return responses

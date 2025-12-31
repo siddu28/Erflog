@@ -6,7 +6,10 @@ from .schemas import (
     GenerateResumeRequest,
     GenerateResumeResponse,
     AnalyzeRejectionRequest,
-    AnalyzeRejectionResponse
+    AnalyzeRejectionResponse,
+    GenerateApplicationResponsesRequest,
+    GenerateApplicationResponsesResponse,
+    ApplicationResponses
 )
 
 __all__ = [
@@ -23,4 +26,7 @@ __all__ = [
     "GenerateResumeResponse",
     "AnalyzeRejectionRequest",
     "AnalyzeRejectionResponse",
+    "GenerateApplicationResponsesRequest",
+    "GenerateApplicationResponsesResponse",
+    "ApplicationResponses",
 ]

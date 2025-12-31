@@ -24,7 +24,8 @@ class Agent4Service:
                 fetch_user_profile,
                 build_resume_from_profile,
                 rewrite_resume_content,
-                find_recruiter_email
+                find_recruiter_email,
+                generate_application_responses
             )
             from .pdf_engine import generate_pdf
             
@@ -35,6 +36,7 @@ class Agent4Service:
             self.rewrite_resume_content = rewrite_resume_content
             self.find_recruiter_email = find_recruiter_email
             self.generate_pdf = generate_pdf
+            self.generate_application_responses = generate_application_responses
             
             self._initialized = True
     
@@ -163,6 +165,61 @@ class Agent4Service:
         # For now, return the local path
         # In production, upload to Supabase storage and return URL
         return pdf_path
+    
+    def generate_responses(
+        self,
+        user_id: str,
+        job_description: str,
+        company_name: str,
+        job_title: str,
+        additional_context: Optional[str] = None
+    ) -> dict:
+        """
+        Generate copy-paste ready responses for job application questions.
+        
+        Args:
+            user_id: UUID of the user from Supabase.
+            job_description: Target job description.
+            company_name: Name of the company.
+            job_title: Title of the position.
+            additional_context: Any additional context.
+        
+        Returns:
+            Dictionary with all application responses.
+        """
+        self._ensure_initialized()
+        start_time = time.time()
+        
+        print(f"📝 [Agent 4] Generating application responses...")
+        print(f"   Company: {company_name}")
+        print(f"   Position: {job_title}")
+        
+        # Fetch user profile from Supabase
+        profile = self.fetch_user_profile_by_uuid(user_id)
+        user_profile = self.build_resume_from_profile(profile)
+        
+        # Generate responses
+        responses = self.generate_application_responses(
+            user_profile=user_profile,
+            job_description=job_description,
+            company_name=company_name,
+            job_title=job_title,
+            additional_context=additional_context
+        )
+        
+        processing_time = int((time.time() - start_time) * 1000)
+        
+        print(f"   ✅ Responses generated in {processing_time}ms")
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "company_name": company_name,
+            "job_title": job_title,
+            "responses": responses,
+            "processing_time_ms": processing_time,
+            "message": "Application responses generated successfully"
+        }
 
 
 # Singleton instance

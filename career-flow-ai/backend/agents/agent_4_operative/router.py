@@ -5,8 +5,10 @@ from .schemas import (
     GenerateResumeRequest,
     GenerateResumeByProfileIdRequest,
     AnalyzeRejectionRequest,
+    GenerateApplicationResponsesRequest,
     GenerateResumeResponse,
     AnalyzeRejectionResponse,
+    GenerateApplicationResponsesResponse,
     HealthResponse,
     ErrorResponse
 )
@@ -101,6 +103,41 @@ async def analyze_rejection(request: AnalyzeRejectionRequest):
             rejection_reason=request.rejection_reason
         )
         return AnalyzeRejectionResponse(**result)
+    
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+
+@router.post(
+    "/generate-responses",
+    response_model=GenerateApplicationResponsesResponse,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
+)
+async def generate_application_responses(request: GenerateApplicationResponsesRequest):
+    """
+    Generate copy-paste ready responses for common job application questions.
+    
+    Generates personalized answers for:
+    - Why do you want to join this company?
+    - Tell us about yourself
+    - Relevant skills and technical expertise
+    - Work experience and key achievements
+    - Why are you a good fit for this role?
+    - Problem-solving or challenges faced
+    - Additional information
+    - Availability, location, or other logistics
+    """
+    try:
+        result = agent4_service.generate_responses(
+            user_id=request.user_id,
+            job_description=request.job_description,
+            company_name=request.company_name,
+            job_title=request.job_title,
+            additional_context=request.additional_context
+        )
+        return GenerateApplicationResponsesResponse(**result)
     
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
