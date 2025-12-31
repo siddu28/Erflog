@@ -8,3 +8,7 @@ supabase
 pypdf
 tavily-python
 pydantic
+langchain-google-genai
+weasyprint
+jinja2
+pinecone
