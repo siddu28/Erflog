@@ -50,15 +50,8 @@ def get_mock_jobs() -> list[dict[str, Any]]:
 def search_jobs(query: str) -> list[dict[str, Any]]:
     """
     Search for jobs using Tavily API with hardcoded fallback.
-    
-    Args:
-        query: Search query string (e.g., "Python Developer jobs")
-        
-    Returns:
-        List of job dictionaries with keys: title, company, link, summary
     """
     try:
-        # Try to use Tavily for job search
         from tavily import TavilyClient
         
         api_key = os.getenv("TAVILY_API_KEY")
@@ -72,28 +65,25 @@ def search_jobs(query: str) -> list[dict[str, Any]]:
         search_query = f"{query} job openings hiring"
         results = client.search(search_query, max_results=5)
         
-        # Transform results to our expected format
+        # Transform results
         jobs = []
         for result in results.get("results", []):
+            content = result.get("content", "")
             job = {
                 "title": result.get("title", "Job Opening"),
                 "company": extract_company_from_url(result.get("url", "")),
                 "link": result.get("url", ""),
-                "summary": result.get("content", "")[:500],  # Limit summary length
+                "summary": content,  # Keep for DB
             }
             jobs.append(job)
         
         if not jobs:
-            print("[Market] No results from Tavily, using mock data")
             return get_mock_jobs()
         
         return jobs
     
-    except ImportError:
-        print("[Market] tavily-python not installed, using mock data")
-        return get_mock_jobs()
     except Exception as e:
-        print(f"[Market] Tavily search failed ({str(e)}), using mock data")
+        print(f"[Market] Error: {str(e)}")
         return get_mock_jobs()
 
 

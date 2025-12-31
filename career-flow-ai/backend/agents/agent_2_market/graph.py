@@ -27,18 +27,14 @@ from typing import Any
 from core.state import AgentState
 from core.db import db_manager
 from .tools import search_jobs, generate_embedding
+from pinecone import Pinecone, ServerlessSpec
 
 
 def init_pinecone():
     """
     Initialize and return Pinecone index.
-    
-    Returns:
-        Pinecone Index object or None if initialization fails
     """
     try:
-        from pinecone import Pinecone
-        
         api_key = os.getenv("PINECONE_API_KEY")
         if not api_key:
             print("[Market] PINECONE_API_KEY not found")
@@ -50,8 +46,16 @@ def init_pinecone():
         pc = Pinecone(api_key=api_key)
         
         # Get or create index
+        if index_name not in pc.list_indexes().names():
+            print(f"Creating Pinecone index: {index_name}")
+            pc.create_index(
+                name=index_name,
+                dimension=768, 
+                metric="cosine",
+                spec=ServerlessSpec(cloud="aws", region="us-east-1")
+            )
+            
         index = pc.Index(index_name)
-        
         return index
     
     except ImportError:
@@ -65,21 +69,7 @@ def init_pinecone():
 def market_scan_node(state: AgentState) -> dict[str, Any]:
     """
     LangGraph node function for the Market Sentinel Agent.
-    
-    This node:
-    1. Gets skills from state to form search query
-    2. Searches for jobs using Tavily (or fallback mock data)
-    3. Saves jobs to Supabase (jobs table)
-    4. Saves job embeddings to Pinecone for semantic search
-    5. Updates and returns state with job_matches
-    
-    Args:
-        state: AgentState containing skills and user context
-        
-    Returns:
-        Updated AgentState with job_matches
     """
-    
     job_matches = []
     
     try:
@@ -90,8 +80,7 @@ def market_scan_node(state: AgentState) -> dict[str, Any]:
             print("[Market] No skills found in state, using default query")
             search_query = "Software Engineer Python jobs"
         else:
-            # Form query from top skills
-            top_skills = skills[:3]  # Use top 3 skills
+            top_skills = skills[:3]
             search_query = f"Software Engineer jobs {' '.join(top_skills)}"
         
         print(f"[Market] Searching jobs with query: {search_query}")
@@ -133,7 +122,12 @@ def market_scan_node(state: AgentState) -> dict[str, Any]:
                 
                 if response.data:
                     saved_job = response.data[0]
-                    saved_job["original"] = job  # Keep original data
+                    # Restore the full description if available (from tools.py)
+                    if "description" in job:
+                        saved_job["description"] = job["description"]
+                    else:
+                        saved_job["description"] = job.get("summary", "")
+                        
                     saved_jobs.append(saved_job)
                     print(f"[Market] Saved job: {job_data['title']} at {job_data['company']}")
                 
@@ -159,11 +153,13 @@ def market_scan_node(state: AgentState) -> dict[str, Any]:
                     
                     # Prepare vector for Pinecone
                     vector_id = f"job_{saved_job['id']}"
+                    
                     metadata = {
                         "job_id": saved_job["id"],
                         "title": saved_job["title"],
                         "company": saved_job["company"],
                         "link": saved_job.get("link", ""),
+                        "summary": saved_job.get("summary", "") # <--- ADDED THIS LINE
                     }
                     
                     vectors_to_upsert.append({
@@ -176,7 +172,7 @@ def market_scan_node(state: AgentState) -> dict[str, Any]:
                     print(f"[Market] Failed to generate embedding for job {saved_job['id']}: {str(e)}")
                     continue
             
-            # Batch upsert vectors to Pinecone
+            # Batch upsert vectors to Pinecone (Namespace: default)
             if vectors_to_upsert:
                 try:
                     pinecone_index.upsert(vectors=vectors_to_upsert)
@@ -194,7 +190,8 @@ def market_scan_node(state: AgentState) -> dict[str, Any]:
                 "title": job["title"],
                 "company": job["company"],
                 "link": job.get("link", ""),
-                "summary": job.get("summary", "")[:200],  # Truncate for state
+                "description": job.get("description", job.get("summary", "")), # Ensure description is passed
+                "summary": job.get("summary", "")[:200],
             }
             for job in saved_jobs
         ]
@@ -219,7 +216,6 @@ def market_scan_node(state: AgentState) -> dict[str, Any]:
     
     except Exception as e:
         print(f"[Market] Error in market_scan_node: {str(e)}")
-        # Return state with error info but don't crash
         updated_state = state.copy()
         updated_state["job_matches"] = job_matches
         updated_state["results"] = {
