@@ -13,10 +13,13 @@ from dotenv import load_dotenv
 # Load env FIRST before any other imports
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Body
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
+
+# Import auth dependency
+from auth.dependencies import get_current_user
 
 # Import routers
 from agents.agent_4_operative import agent4_router
@@ -25,7 +28,7 @@ from agents.agent_4_operative import agent4_router
 from agents.agent_1_perception.graph import perception_node
 from agents.agent_2_market.graph import market_scan_node
 from agents.agent_3_strategist.graph import search_jobs as strategist_search_jobs, process_career_strategy
-from agents.agent_6_interviewer.graph import run_interview_turn
+from agents.agent_6_chat_interview.graph import run_interview_turn
 
 # Import state
 from core.state import AgentState
@@ -134,8 +137,22 @@ async def root():
             "workflow": ["/api/init", "/api/upload-resume", "/api/market-scan", "/api/generate-strategy", "/api/generate-application"],
             "interview": "/api/interview/chat",
             "legacy": ["/api/match", "/api/generate-kit"],
-            "agent4": "/agent4"
+            "agent4": "/agent4",
+            "auth": "/api/me"
         }
+    }
+
+
+@app.get("/api/me")
+async def get_me(user=Depends(get_current_user)):
+    """
+    Protected endpoint - returns current user info from JWT.
+    Requires valid Supabase JWT in Authorization header.
+    """
+    return {
+        "user_id": user["sub"],
+        "email": user.get("email"),
+        "provider": user.get("app_metadata", {}).get("provider")
     }
 
 
