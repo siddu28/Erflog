@@ -183,9 +183,11 @@ Handling user interactions and API requests.
 | Agent | Name | Role | Documentation |
 |:-----:|:-----|:-----|:-------------:|
 | 1️⃣ | **Perception** | **Profile Analyst**<br>Resume parsing, skill extraction, profiling. | [Read Docs](./career-flow-ai/backend/agents/agent_1_perception/README.md) |
-| 2️⃣ | **Sentinel** | **Market Scout**<br>Job market scanning, opportunity matching. | [Read Docs](./career-flow-ai/backend/agents/agent_2_sentinel/README.md) |
+| 2️⃣ | **Sentinel** | **Market Scout**<br>Job market scanning, opportunity matching. | [Read Docs](./career-flow-ai/backend/agents/agent_2_market/README.md) |
 | 3️⃣ | **Strategist** | **Career Coach**<br>Gap analysis, learning roadmaps. | [Read Docs](./career-flow-ai/backend/agents/agent_3_strategist/README.md) |
 | 4️⃣ | **Operative** | **Headhunter**<br>Application submission, resume tailoring. | [Read Docs](./career-flow-ai/backend/agents/agent_4_operative/README.md) |
+| 5️⃣ | **Voice Bot** | **Interface**<br>Voice-to-text processing (Alpha). | [Read Docs](./career-flow-ai/backend/agents/agent_5_interview/README.md) |
+| 6️⃣ | **Interviewer** | **Mock Interviewer**<br>Context-aware technical & behavioral exams. | [Read Docs](./career-flow-ai/backend/agents/agent_6_interviewer/README.md) |
 
 <br />
 
