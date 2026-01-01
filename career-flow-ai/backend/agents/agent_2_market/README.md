@@ -13,13 +13,7 @@
 
 ## Workflow
 
-1. **Skill Analysis**: Reads the user's top skills from the state.
-2. **Search**: queries job sources (Tavily/Mock) for relevant listings.
-3. **Ingestion**:
-    - Checks if the job already exists.
-    - Saves new jobs to Supabase.
-    - Generates embeddings from the job summary/description.
-    - Upserts vectors to Pinecone metadata.
+![Agent Workflow](image.png)
 
 ## Key Components
 

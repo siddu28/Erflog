@@ -12,4 +12,8 @@
 
 **Current State**: `Experimental / Alpha`
 
-This agent is currently a foundational module designed to wrap the text-based logic of Agent 6 with an audio processing layer. It is intended to run on the client-side or via a websocket stream for low-latency interaction.
+
+## Workflow
+
+![Agent Workflow](image.png)
+

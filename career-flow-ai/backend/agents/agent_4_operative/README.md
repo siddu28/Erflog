@@ -283,13 +283,4 @@ Agent 4 - Application Operative
 
 ## Workflow
 
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   MUTATE    │───▶│   RENDER    │───▶│    HUNT     │
-│  (Gemini)   │    │ (WeasyPrint)│    │ (Hunter.io) │
-└─────────────┘    └─────────────┘    └─────────────┘
-       │                  │                  │
-       ▼                  ▼                  ▼
-  Rewrite resume    Generate PDF      Find recruiter
-  for ATS          & upload to S3    email
-```
+![Agent Workflow](image.png)

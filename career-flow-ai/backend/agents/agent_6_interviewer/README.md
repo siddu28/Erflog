@@ -16,15 +16,7 @@
 
 ## Workflow
 
-```mermaid
-graph TD
-    Start[User Message] -->|Invoke| Graph[LangGraph State]
-    Graph -->|History + JD| Node[Interviewer Node]
-    Node -->|Prompt| Gemini[Gemini 2.0 Flash]
-    Gemini -->|Response| Message[Assistant Message]
-    Message -->|Update| Memory[Memory Saver]
-    Memory -->|Reply| User
-```
+![Agent Workflow](image.png)
 
 ## API Endpoint
 

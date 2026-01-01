@@ -15,15 +15,7 @@
 
 ## Workflow
 
-```mermaid
-graph TD
-    User[User Profile] -->|Vector Search| Pinecone
-    Pinecone -->|Candidates| Classifier
-    Classifier -->|Tier A| Apply[Ready to Apply]
-    Classifier -->|Tier B| Gap[Gap Analysis]
-    Gap -->|Gemini| Roadmap[Generate Learning Roadmap]
-    Classifier -->|Tier C| Discord[Ignore]
-```
+![Agent Workflow](image.png)
 
 ## API usage
 

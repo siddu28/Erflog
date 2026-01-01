@@ -13,16 +13,7 @@
 
 ## Workflow
 
-```mermaid
-graph LR
-    User[User Upload] -->|PDF| API[FastAPI Endpoint]
-    API -->|Raw PDF| S3[Supabase Storage]
-    API -->|Text| Parser[PDF Parser]
-    Parser -->|Raw Text| Gemini[Gemini 2.0]
-    Gemini -->|JSON Profile| DB[Supabase DB]
-    Gemini -->|Summary| Embed[Embedding Model]
-    Embed -->|Vector| VectorDB[Pinecone]
-```
+![Agent Workflow](image.png)
 
 ## Key Components
 
