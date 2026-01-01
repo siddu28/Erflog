@@ -69,13 +69,13 @@
 ## Demo
 
 <p align="center">
-  <a href="Ai-Verse-Demo-Video (Team Erflog).mp4">
+  <a href="Demo-Video (Team Erflog).mp4">
     <img src="https://img.shields.io/badge/▶️_Watch_Demo-Video-red?style=for-the-badge" alt="Watch Demo Video" />
   </a>
 </p>
 
 <p align="center">
-  <video src="Ai-Verse-Demo-Video (Team Erflog).mp4" width="100%" controls>
+  <video src="Demo-Video (Team Erflog).mp4" width="100%" controls>
     Your browser does not support the video tag.
   </video>
 </p>
