@@ -69,18 +69,14 @@
 ## Demo
 
 <p align="center">
-  <a href="Demo-Video (Team Erflog).mp4">
+  <a href="[Demo-Video (Team Erflog).mp4](https://github.com/user-attachments/assets/dbc98028-ed5b-4321-b2d3-73bb54646128)">
     <img src="https://img.shields.io/badge/▶️_Watch_Demo-Video-red?style=for-the-badge" alt="Watch Demo Video" />
   </a>
 </p>
 
-<p align="center">
-  <video src="Demo-Video (Team Erflog).mp4" width="100%" controls>
-    Your browser does not support the video tag.
-  </video>
-</p>
 
-<br />
+https://github.com/user-attachments/assets/dbc98028-ed5b-4321-b2d3-73bb54646128
+
 
 ## About The Project
 
