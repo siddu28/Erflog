@@ -15,8 +15,8 @@ build/
 .env.*.local
 
 # Agent 4 outputs
-career-flow-ai/backend/outputs/
-*.pdf
+backend/outputs/
+debug_*.pdf
 debug_*.json
 
 # IDE
