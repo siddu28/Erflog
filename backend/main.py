@@ -329,6 +329,79 @@ async def sync_github(request: GithubSyncRequest):
 
     return {"status": "success", "analysis": analysis, "updated_skills": final_skills}
 
+# Add this model near the top with others
+class WatchdogCheckRequest(BaseModel):
+    session_id: str
+    last_known_sha: Optional[str] = None # To avoid re-analyzing the same commit
+
+# --- NEW ENDPOINT FOR LIVE LISTENING ---
+@app.post("/api/watchdog/check")
+async def watchdog_check(request: WatchdogCheckRequest):
+    """
+    Polls GitHub to see if the user pushed anything new.
+    If NEW activity is found:
+       1. Runs Analysis
+       2. Updates Profile
+       3. Returns new skills
+    If NO change:
+       Returns status="no_change"
+    """
+    from agents.agent_1_perception.github_watchdog import get_latest_user_activity, fetch_and_analyze_github
+    
+    # 1. Check what the user is doing right now
+    activity = get_latest_user_activity("dummy") # Token handles auth, arg is placeholder
+    
+    if not activity:
+        return {"status": "error", "message": "Could not fetch GitHub activity"}
+        
+    current_sha = activity['latest_commit_sha']
+    repo_name = activity['repo_name']
+    
+    # 2. Compare with what the Frontend already knows
+    if request.last_known_sha == current_sha:
+        # User hasn't pushed anything new. Do nothing.
+        return {"status": "no_change", "repo_name": repo_name}
+        
+    print(f"🔔 LIVE WATCHDOG: New activity detected in {repo_name} (SHA: {current_sha[:7]})")
+    
+    # 3. New changes detected! Run the full analysis on THIS specific repo.
+    analysis = fetch_and_analyze_github(activity['repo_url'])
+    
+    if not analysis:
+        return {"status": "no_change", "message": "Analysis empty"}
+
+    new_skills = [item['skill'] for item in analysis.get('detected_skills', [])]
+    
+    # 4. Update Database & Session (Reuse logic)
+    # ... (Same logic as sync_github) ...
+    client = db_manager.get_client()
+    final_skills = new_skills
+    
+    try:
+        # Get existing skills to merge
+        if request.session_id in SESSIONS:
+            existing = SESSIONS[request.session_id].get("skills", [])
+            unique_old = [s for s in existing if s not in new_skills]
+            final_skills = new_skills + unique_old # New first!
+            SESSIONS[request.session_id]["skills"] = final_skills
+            
+        # Update DB
+        response = client.table("profiles").select("*").order("created_at", desc=True).limit(1).execute()
+        if response.data:
+            profile_id = response.data[0]['id']
+            client.table("profiles").update({"skills": final_skills}).eq("id", profile_id).execute()
+            
+    except Exception as e:
+        print(f"❌ DB Error: {e}")
+
+    return {
+        "status": "updated",
+        "repo_name": repo_name,
+        "new_sha": current_sha,
+        "updated_skills": final_skills,
+        "analysis": analysis
+    }
+
 
 @app.post("/api/market-scan")
 async def market_scan(request: MarketScanRequest):
