@@ -40,10 +40,13 @@ export default function Nexus() {
     setProcessingError(null);
     clearError();
 
+    // Generate unique timestamp for this processing session
+    const timestamp = Date.now();
+
     // Start with initial logs
     setAgentLogs([
       {
-        id: "1",
+        id: `init-${timestamp}`,
         message: "Handshake Initiated...",
         type: "system",
         delay: 100,
@@ -55,7 +58,7 @@ export default function Nexus() {
       setAgentLogs((prev) => [
         ...prev,
         {
-          id: "2",
+          id: `session-init-${timestamp}`,
           agent: "System",
           message: "Initializing session...",
           type: "agent",
@@ -72,7 +75,7 @@ export default function Nexus() {
       setAgentLogs((prev) => [
         ...prev,
         {
-          id: "3",
+          id: `session-created-${timestamp}`,
           message: `Session created: ${newSessionId.substring(0, 8)}...`,
           type: "status",
           delay: 300,
@@ -83,7 +86,7 @@ export default function Nexus() {
       setAgentLogs((prev) => [
         ...prev,
         {
-          id: "4",
+          id: `pdf-ingest-${timestamp}`,
           agent: "Agent 1 (Perception)",
           message: "Ingesting PDF Blob...",
           type: "agent",
@@ -96,7 +99,7 @@ export default function Nexus() {
         setAgentLogs((prev) => [
           ...prev,
           {
-            id: "4b",
+            id: `github-scan-${timestamp}`,
             agent: "Digital Twin Watchdog",
             message: `Scanning Codebase: ${githubUrl.split('/').slice(-2).join('/')}...`,
             type: "agent",
@@ -108,7 +111,7 @@ export default function Nexus() {
       setAgentLogs((prev) => [
         ...prev,
         {
-          id: "5",
+          id: `semantic-extract-${timestamp}`,
           agent: "Agent 1",
           message: "Extracting Semantic Layers...",
           type: "agent",
@@ -117,7 +120,6 @@ export default function Nexus() {
       ]);
 
       // Pass githubUrl to the context function
-      // NOTE: Ensure your SessionContext's uploadUserResume accepts this second argument
       const uploadSuccess = await uploadUserResume(file, newSessionId, githubUrl);
 
       if (!uploadSuccess) {
@@ -127,7 +129,7 @@ export default function Nexus() {
       setAgentLogs((prev) => [
         ...prev,
         {
-          id: "6",
+          id: `vectorize-${timestamp}`,
           agent: "Agent 1",
           message: "Vectorizing User Skills (768 dimensions)...",
           type: "agent",
@@ -139,7 +141,7 @@ export default function Nexus() {
          setAgentLogs((prev) => [
         ...prev,
         {
-          id: "6b",
+          id: `github-merge-${timestamp}`,
           agent: "Agent 1",
           message: "Merging GitHub Analysis with Resume Vector...",
           type: "success",
@@ -151,7 +153,7 @@ export default function Nexus() {
       setAgentLogs((prev) => [
         ...prev,
         {
-          id: "7",
+          id: `skill-graph-${timestamp}`,
           message: "Skill Graph Constructed.",
           type: "status",
           delay: 1000,
@@ -161,7 +163,7 @@ export default function Nexus() {
       setAgentLogs((prev) => [
         ...prev,
         {
-          id: "8",
+          id: `identity-created-${timestamp}`,
           message: "Identity Archetype Created.",
           type: "success",
           delay: 1200,
@@ -174,7 +176,7 @@ export default function Nexus() {
       setAgentLogs((prev) => [
         ...prev,
         {
-          id: "error",
+          id: `error-${timestamp}`,
           message: `Error: ${errorMessage}`,
           type: "system",
           delay: 500,

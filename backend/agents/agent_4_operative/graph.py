@@ -22,67 +22,37 @@ def mutate_node(state: Agent4State) -> dict:
     job_description = state["job_description"]
     user_profile = state["user_profile"]
     
-    # Extract Resume Data
-    resume_data = user_profile.get("resume", user_profile)
+    # Get the user_id - this MUST match the PDF filename in storage
+    user_id = user_profile.get("user_id")
+    if not user_id:
+        raise ValueError("user_id is required in user_profile to download the original PDF")
     
-    # Call Gemini to rewrite
-    rewritten_content = rewrite_resume_content(
-        original_resume_json=resume_data,
-        job_description=job_description
-    )
+    print(f"   User ID for PDF download: {user_id}")
     
-    # Print summary diff
-    orig_summary = resume_data.get("summary", resume_data.get("experience_summary", ""))
-    new_summary = rewritten_content.get("summary", "")
+    # Import and run the mutation flow
+    from .tools import mutate_resume_for_job
     
-    print(f"\n   🔍 --- SUMMARY DIFF ---")
-    print(f"   🔴 OLD: {str(orig_summary)[:100]}...")
-    print(f"   🟢 NEW: {new_summary[:100]}...")
-    print("   -----------------------\n")
+    result = mutate_resume_for_job(user_id, job_description)
     
     return {
-        "rewritten_content": rewritten_content,
-        "application_status": "pending"
+        "rewritten_content": result.get("replacements", []),
+        "pdf_url": result.get("pdf_url", ""),
+        "pdf_path": result.get("pdf_path", ""),
+        "application_status": "ready" if result.get("status") == "success" else "pending"
     }
 
 
 def render_node(state: Agent4State) -> dict:
     """
-    Node that generates PDF and uploads directly to Supabase (no local storage).
+    Node that handles PDF - in the new flow, PDF is already generated in mutate_node.
+    This node just passes through the results.
     """
-    print("🖨️ [Agent 4] Rendering PDF...")
-    rewritten_content = state["rewritten_content"]
-    user_profile = state["user_profile"]
+    print("🖨️ [Agent 4] Render Node (PDF already generated in mutate step)")
     
-    # Merge rewritten content with original profile data
-    resume_data = {
-        **user_profile,
-        **rewritten_content
-    }
-    
-    # Get user_id for file naming
-    user_id = user_profile.get("user_id", str(uuid.uuid4()))
-    
-    # Generate PDF to temp file
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_file:
-        temp_path = tmp_file.name
-    
-    try:
-        # Generate PDF
-        generate_pdf(resume_data, temp_path)
-        print(f"   📄 PDF generated (temp)")
-        
-        # Upload to Supabase storage
-        pdf_url = upload_resume_to_storage(temp_path, user_id)
-    finally:
-        # Clean up temp file
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-            print(f"   🗑️ Temp file cleaned up")
-    
+    # PDF was already generated and uploaded in mutate_node via mutate_resume_for_job
     return {
-        "pdf_path": "",  # No local path
-        "pdf_url": pdf_url
+        "pdf_path": state.get("pdf_path", ""),
+        "pdf_url": state.get("pdf_url", "")
     }
 
 
@@ -98,11 +68,12 @@ def hunt_node(state: Agent4State) -> dict:
     print(f"   -> Target Domain: {company_domain}")
     
     # Find recruiter email
+    from .tools import find_recruiter_email
     recruiter_info = find_recruiter_email(company_domain)
     
     return {
-        "recruiter_email": recruiter_info["email"],
-        "application_status": "ready"  # Resume is ready to be sent
+        "recruiter_email": recruiter_info.get("email"),
+        "application_status": "ready"
     }
 
 

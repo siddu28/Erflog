@@ -70,6 +70,8 @@ class KitRequest(BaseModel):
     user_name: str
     job_title: str
     job_company: str
+    session_id: Optional[str] = None  # Add session_id support
+    job_description: Optional[str] = None  # Add job description
 
 class SessionRequest(BaseModel):
     session_id: str
@@ -179,23 +181,124 @@ async def match_agent(request: SearchRequest):
 
 @app.post("/api/generate-kit")
 async def generate_kit_endpoint(request: KitRequest):
-    """Generate deployment kit endpoint."""
-    try:
-        from agents.agent_4_operative import agent4_service
-        result = agent4_service.generate_resume(
-            user_profile={"name": request.user_name},
-            job_description=f"Position: {request.job_title} at {request.job_company}"
+    """
+    Generate deployment kit - tailored resume PDF for a specific job.
+    Uses Agent 4 (Operative) to mutate the resume.
+    """
+    print(f"[Generate Kit] Request for: {request.user_name} - {request.job_title} @ {request.job_company}")
+    
+    # Try to get user_id from session
+    user_id = None
+    user_profile = None
+    
+    if request.session_id and request.session_id in SESSIONS:
+        state = SESSIONS[request.session_id]
+        user_id = state.get("user_id")
+        perception_results = state.get("results", {}).get("perception", {})
+        user_profile = {
+            "name": perception_results.get("name") or request.user_name,
+            "email": perception_results.get("email", ""),
+            "skills": state.get("skills", []),
+            "experience_summary": perception_results.get("experience_summary", ""),
+            "education": perception_results.get("education", ""),
+            "resume": perception_results.get("resume_json", {}),
+            "user_id": user_id  # CRITICAL: Include user_id here!
+        }
+        print(f"[Generate Kit] Found user_id from session: {user_id}")
+    
+    # If no session, try to find most recent profile from DB
+    if not user_id:
+        try:
+            supabase = db_manager.get_client()
+            response = supabase.table("profiles").select("*").order("created_at", desc=True).limit(1).execute()
+            
+            if response.data:
+                profile = response.data[0]
+                user_id = profile.get("user_id")  # This is the UUID that matches the PDF in storage!
+                user_profile = {
+                    "name": profile.get("name") or request.user_name,
+                    "email": profile.get("email", ""),
+                    "skills": profile.get("skills", []),
+                    "experience_summary": profile.get("experience_summary", ""),
+                    "education": profile.get("education", ""),
+                    "resume": profile.get("resume_json", {}),
+                    "user_id": user_id  # CRITICAL: This must match the PDF filename in storage!
+                }
+                print(f"[Generate Kit] Found user_id from DB: {user_id}")
+                print(f"[Generate Kit] Resume URL in DB: {profile.get('resume_url', 'N/A')}")
+        except Exception as e:
+            print(f"[Generate Kit] DB lookup failed: {e}")
+    
+    if not user_id:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": "No user profile found. Please upload your resume first.",
+                "detail": "Upload your resume on the home page to enable resume generation."
+            }
         )
-        if result.get("pdf_path"):
-            return FileResponse(
-                path=result["pdf_path"],
-                filename=os.path.basename(result["pdf_path"]),
-                media_type='application/pdf'
+    
+    # Build job description from request
+    job_description = request.job_description or f"""
+    {request.job_title} at {request.job_company}
+    
+    We are looking for a talented {request.job_title} to join our team at {request.job_company}.
+    """
+    
+    try:
+        # Run Agent 4 to generate the tailored resume
+        print(f"[Generate Kit] Running Agent 4 for user: {user_id}")
+        print(f"[Generate Kit] Will download PDF: {user_id}.pdf from storage")
+        
+        from agents.agent_4_operative.graph import run_agent4
+        
+        operative_result = run_agent4(job_description, user_profile)
+        
+        pdf_url = operative_result.get("pdf_url")
+        pdf_path = operative_result.get("pdf_path")
+        
+        print(f"[Generate Kit] ✅ Resume generated!")
+        print(f"   PDF URL: {pdf_url}")
+        
+        # If we have a PDF URL, return success
+        if pdf_url:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "success",
+                    "message": "Resume generated successfully",
+                    "data": {
+                        "pdf_url": pdf_url,
+                        "pdf_path": pdf_path,
+                        "user_name": request.user_name,
+                        "job_title": request.job_title,
+                        "job_company": request.job_company,
+                        "application_status": operative_result.get("application_status", "ready")
+                    }
+                }
             )
-        return JSONResponse(status_code=200, content={"status": "success", "message": "Kit generated", "data": result})
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": "Failed to generate PDF",
+                    "detail": str(operative_result.get("error", "Unknown error"))
+                }
+            )
+            
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Kit generation error: {str(e)}")
-
+        print(f"[Generate Kit] ❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Failed to generate resume: {str(e)}"
+            }
+        )
 
 # -----------------------------------------------------------------------------
 # NEW AGENT WORKFLOW ENDPOINTS
@@ -498,8 +601,7 @@ async def generate_application(request: ApplicationRequest):
             "pdf_path": operative_result.get("pdf_path"),
             "pdf_url": operative_result.get("pdf_url"),
             "recruiter_email": operative_result.get("recruiter_email"),
-            "application_status": operative_result.get("application_status"),
-            "rewritten_content": operative_result.get("rewritten_content")
+            "application_status": operative_result.get("application_status"),            "rewritten_content": operative_result.get("rewritten_content")
         }
     }
 

@@ -6,6 +6,69 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+"""
+Agent 4 Service - Resume Mutation Service
+"""
+
+from .tools import mutate_resume_for_job, save_application_to_db
+
+
+def generate_resume(user_id: str = None, job_description: str = None, job_id: str | int = None, **kwargs) -> dict:
+    """
+    Main service function to generate/mutate a resume for a job.
+    
+    Args:
+        user_id: User's UUID (required).
+        job_description: Target job description (required).
+        job_id: Optional Job ID to link application in DB.
+    
+    Returns:
+        Dict with pdf_url, changes_made, etc.
+    """
+    if not user_id:
+        return {
+            "status": "error",
+            "error": "user_id is required",
+            "message": "Please provide a user_id."
+        }
+    
+    if not job_description:
+        return {
+            "status": "error", 
+            "error": "job_description is required",
+            "message": "Please provide a job description."
+        }
+    
+    # Use the new mutation flow
+    result = mutate_resume_for_job(user_id, job_description)
+    
+    # Add additional fields for API response compatibility
+    result["application_status"] = "ready" if result.get("status") == "success" else "failed"
+    result["optimized_resume"] = {
+        "changes": result.get("replacements", []),
+        "keywords": result.get("keywords_added", [])
+    }
+    
+    # Save to DB if job_id is present and result was successful
+    if job_id and result.get("status") == "success":
+        try:
+            # Ensure job_id is int (schema says int8)
+            job_id_int = int(job_id)
+            
+            save_application_to_db(
+                user_id=user_id,
+                job_id=job_id_int,
+                tailored_resume_url=result.get("pdf_url"),
+                custom_responses=result.get("optimized_resume")
+            )
+        except Exception as e:
+            print(f"⚠️ [Agent 4] Failed to save application to DB: {e}")
+            # Don't fail the whole request if DB save fails
+            
+    return result
+
+
+# Singleton instance
 class Agent4Service:
     """
     Service layer for Agent 4 - Application Operative.
@@ -105,20 +168,26 @@ class Agent4Service:
     ) -> dict:
         """
         Generate resume using profile ID instead of UUID.
+        Note: In new schema, profile_id IS the user_id (uuid).
+        This method now expects user_id directly.
         """
         self._ensure_initialized()
-        start_time = time.time()
         
-        # Fetch profile and get user_id
+        # In the new schema, profiles.user_id is the primary key
+        # So profile_id should actually be a user_id (uuid string)
+        # For backward compatibility, try to look it up
         from core.db import db_manager
         supabase = db_manager.get_client()
-        response = supabase.table("profiles").select("user_id").eq("id", profile_id).execute()
         
-        if not response.data:
-            raise ValueError(f"Profile {profile_id} not found")
+        # Try to find by user_id directly (new schema)
+        response = supabase.table("profiles").select("user_id").eq("user_id", str(profile_id)).execute()
         
-        user_id = response.data[0]["user_id"]
-        return self.generate_resume(user_id, job_description)
+        if response.data:
+            user_id = response.data[0]["user_id"]
+            return self.generate_resume(user_id, job_description)
+        
+        # If not found, the profile_id might be invalid
+        raise ValueError(f"Profile with user_id {profile_id} not found")
     
     def analyze_rejection(
         self,
@@ -221,6 +290,5 @@ class Agent4Service:
             "message": "Application responses generated successfully"
         }
 
-
-# Singleton instance
+# Create singleton instance
 agent4_service = Agent4Service()
