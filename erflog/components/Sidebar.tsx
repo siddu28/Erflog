@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Bot,
   MessageCircle,
+  Code,
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -45,11 +46,10 @@ export default function Sidebar() {
           <li>
             <Link
               href="/"
-              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
-                pathname === "/"
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${pathname === "/"
                   ? "bg-accent text-surface"
                   : "text-ink hover:bg-surface"
-              }`}
+                }`}
               style={
                 pathname === "/"
                   ? { backgroundColor: "#D95D39", color: "#FFFFFF" }
@@ -65,11 +65,10 @@ export default function Sidebar() {
           <li>
             <Link
               href="/dashboard"
-              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
-                isActive("/dashboard")
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${isActive("/dashboard")
                   ? "bg-accent text-surface"
                   : "text-ink hover:bg-surface"
-              }`}
+                }`}
               style={
                 isActive("/dashboard")
                   ? { backgroundColor: "#D95D39", color: "#FFFFFF" }
@@ -85,11 +84,10 @@ export default function Sidebar() {
           <li>
             <Link
               href="/jobs"
-              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
-                isActive("/jobs")
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${isActive("/jobs")
                   ? "bg-accent text-surface"
                   : "text-ink hover:bg-surface"
-              }`}
+                }`}
               style={
                 isActive("/jobs")
                   ? { backgroundColor: "#D95D39", color: "#FFFFFF" }
@@ -105,11 +103,10 @@ export default function Sidebar() {
           <li>
             <Link
               href="/interview"
-              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
-                isActive("/interview")
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${isActive("/interview")
                   ? "bg-accent text-surface"
                   : "text-ink hover:bg-surface"
-              }`}
+                }`}
               style={
                 isActive("/interview")
                   ? { backgroundColor: "#D95D39", color: "#FFFFFF" }
@@ -121,15 +118,33 @@ export default function Sidebar() {
             </Link>
           </li>
 
+          {/* Problem Solving */}
+          <li>
+            <Link
+              href="/problem-solving"
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${isActive("/problem-solving")
+                  ? "bg-accent text-surface"
+                  : "text-ink hover:bg-surface"
+                }`}
+              style={
+                isActive("/problem-solving")
+                  ? { backgroundColor: "#D95D39", color: "#FFFFFF" }
+                  : { color: "#1A1A1A" }
+              }
+            >
+              <Code size={20} />
+              Problem Solving
+            </Link>
+          </li>
+
           {/* Evolution / Settings */}
           <li>
             <Link
               href="/settings"
-              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
-                isActive("/settings")
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${isActive("/settings")
                   ? "bg-accent text-surface"
                   : "text-ink hover:bg-surface"
-              }`}
+                }`}
               style={
                 isActive("/settings")
                   ? { backgroundColor: "#D95D39", color: "#FFFFFF" }
