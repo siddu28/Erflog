@@ -135,7 +135,7 @@ async def root():
             "interview": "/api/interview/chat",
             "legacy": ["/api/match", "/api/generate-kit"],
             "agent4": "/agent4",
-            "auth": "/api/me"
+            "auth": "/api/me",
             "watchdog": "/api/sync-github" # <--- Added to documentation
         }
     }
