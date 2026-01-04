@@ -1,19 +1,52 @@
-# Agent 5 - Interview Voice Bot (Experimental)
+# Agent 5 - Interview (Unified)
 
-**Agent 5** adds a voice interface to the interview practice loop, allowing candidates to speak their answers instead of typing.
+**Agent 5** is a conversational AI designed to conduct technical and behavioral mock interviews. It uses **LangGraph** to maintain state and **Gemini 2.0** to generate context-aware questions and feedback.
 
 ## Features
 
-- **Audio Processing** - Ingests raw audio bytes from the frontend.
-- 🗣️ **Speech-to-Text (STT)** - (Planned) Converts candidate speech to text for analysis.
-- **Text-to-Speech (TTS)** - (Planned) plays back the interviewer's questions.
+- **Mode Toggle** - Switch between `text` (chat) and `voice` modes
+- **Conversational State** - Remembers entire interview history via LangGraph checkpoints
+- **Staged Flow** - Progresses through 4 interview stages:
+  1. **Intro** - Welcome and self-introduction
+  2. **Resume** - Deep dive into skills and projects
+  3. **Gap Challenge** - Questions on missing skills
+  4. **Conclusion** - Wrap up and feedback
+- **Context Awareness** - Tailors questions to Job Description and candidate answers
 
-## Status
+## API Endpoints
 
-**Current State**: `Experimental / Alpha`
+### Text Interview (WebSocket)
+**WS** `/ws/interview/text/{job_id}`
 
+### Voice Interview (WebSocket)  
+**WS** `/ws/interview/{job_id}`
 
-## Workflow
+### Chat Interview (REST)
+**POST** `/api/interview/chat`
+```json
+{
+  "session_id": "uuid-session",
+  "job_context": "Senior Python Developer at Google",
+  "user_message": "I have 5 years of experience with Django..."
+}
+```
 
-![Agent Workflow](image.png)
+## Usage
 
+```python
+from agents.agent_5_interview.graph import (
+    chat_interview_graph,
+    voice_interview_graph,
+    create_chat_state,
+    create_voice_state,
+    add_user_message
+)
+
+# Text interview
+state = create_chat_state(context)
+result = chat_interview_graph.invoke(state, config)
+
+# Voice interview  
+state = create_voice_state(context)
+result = voice_interview_graph.invoke(state, config)
+```

@@ -1,6 +1,12 @@
+"""
+Agent 5 - Interview (Unified Chat + Voice)
+Conducts mock interviews via text or voice with LangGraph state machine.
+Toggle mode: 'text' for chat, 'voice' for voice-optimized responses.
+"""
+import os
 import json
 import datetime
-import os
+import time
 from typing import TypedDict, List, Literal, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
@@ -24,7 +30,9 @@ def get_llm():
         )
     return _llm
 
-checkpointer = MemorySaver()
+# Separate checkpointers for chat and voice
+chat_checkpointer = MemorySaver()
+voice_checkpointer = MemorySaver()
 
 # 4-stage flow: intro -> resume -> gap_challenge -> conclusion (then end)
 STAGES = {
@@ -43,13 +51,18 @@ class InterviewState(TypedDict):
     context: dict
     feedback: Optional[dict]
     ending: bool
+    mode: str  # 'text' or 'voice'
 
-def get_stage_prompt(stage: str, ctx: dict, stage_turn: int) -> str:
+def get_stage_prompt(stage: str, ctx: dict, stage_turn: int, mode: str = "text") -> str:
     job = ctx.get('job', {})
     user = ctx.get('user', {})
     gaps = ctx.get('gaps', {})
     
-    base = f"""You are interviewing for {job.get('title', 'Role')}. Keep responses SHORT (1-2 sentences). Ask ONE clear question. DO NOT include labels like 'Interviewer:' in your response."""
+    # Voice mode has extra instruction to avoid labels
+    if mode == "voice":
+        base = f"""You are interviewing for {job.get('title', 'Role')}. Keep responses SHORT (1-2 sentences). Ask ONE clear question. DO NOT include labels like 'Interviewer:' in your response."""
+    else:
+        base = f"""Interviewer for {job.get('title', 'Role')}. Keep it SHORT (1-2 sentences). ONE question."""
 
     if stage == "intro":
         return f"{base} Welcome and ask for a quick self-introduction."
@@ -68,17 +81,19 @@ def get_stage_prompt(stage: str, ctx: dict, stage_turn: int) -> str:
     return base
 
 def interviewer_node(state: InterviewState) -> dict:
+    mode = state.get("mode", "text")
     stage = state.get("stage", "intro")
     turn = state.get("turn", 0)
     stage_turn = state.get("stage_turn", 0)
     ctx = state.get("context", {})
     messages = state.get("messages", [])
     
-    print(f"[Voice Interviewer] Stage: {stage}, Turn: {turn}, StageTurn: {stage_turn}, Ending: {state.get('ending', False)}")
+    log_prefix = "[Voice Interviewer]" if mode == "voice" else "[Chat Interviewer]"
+    print(f"{log_prefix} Stage: {stage}, Turn: {turn}, StageTurn: {stage_turn}, Ending: {state.get('ending', False)}")
     
-    # Special handling for conclusion: after user answers (stage_turn=1), end immediately
-    if stage == "conclusion" and stage_turn >= 1:
-        print(f"[Voice Interviewer] Conclusion answer received, ending interview")
+    # Voice mode: Special handling for conclusion - after user answers (stage_turn=1), end immediately
+    if mode == "voice" and stage == "conclusion" and stage_turn >= 1:
+        print(f"{log_prefix} Conclusion answer received, ending interview")
         return {
             "messages": messages,
             "stage": "end",
@@ -97,11 +112,11 @@ def interviewer_node(state: InterviewState) -> dict:
         next_idx = stage_order.index(next_stage) if next_stage in stage_order else len(stage_order) - 1
         
         if next_idx > current_idx:
-            print(f"[Voice Interviewer] ✅ TRANSITIONING: {stage} -> {next_stage} (StageTurn {stage_turn}/{config['turns']})")
+            print(f"{log_prefix} ✅ TRANSITIONING: {stage} -> {next_stage} (StageTurn {stage_turn}/{config['turns']})")
             
-            # If transitioning to end, just mark as ending without generating message
-            if next_stage == "end":
-                print(f"[Voice Interviewer] Ending interview - no more messages")
+            # Voice mode: If transitioning to end, just mark as ending without generating message
+            if mode == "voice" and next_stage == "end":
+                print(f"{log_prefix} Ending interview - no more messages")
                 return {
                     "messages": messages,
                     "stage": "end",
@@ -112,35 +127,54 @@ def interviewer_node(state: InterviewState) -> dict:
             
             stage = next_stage
             stage_turn = 0
+            if next_stage == "end":
+                state = {**state, "ending": True}
     
     if stage == "end" or state.get("ending", False) or turn >= MAX_TURNS:
-        print(f"[Voice Interviewer] Already ended - Stage:{stage}, Ending:{state.get('ending')}, Turn:{turn}/{MAX_TURNS}")
+        print(f"{log_prefix} Triggering conclusion - Stage:{stage}, Ending:{state.get('ending')}, Turn:{turn}/{MAX_TURNS}")
+        
+        # Voice mode: Return early without generating more messages
+        if mode == "voice":
+            return {
+                "messages": messages,
+                "stage": "end",
+                "ending": True
+            }
+        
+        # Text mode: Generate final conclusion message
+        prompt = get_stage_prompt("conclusion", ctx, 1, mode) + " Final message."
+        response = get_llm().invoke(messages[-4:] + [HumanMessage(content=prompt)])
         return {
-            "messages": messages,
+            "messages": messages + [AIMessage(content=response.content)],
             "stage": "end",
             "ending": True
         }
     
-    prompt = get_stage_prompt(stage, ctx, stage_turn)
-    import time
-    start_time = time.time()
-    response = get_llm().invoke(messages[-4:] + [HumanMessage(content=prompt)])
-    elapsed = time.time() - start_time
-    print(f"[Voice Interviewer] LLM took {elapsed:.2f}s")
+    prompt = get_stage_prompt(stage, ctx, stage_turn, mode)
+    
+    # Voice mode: Add timing metrics
+    if mode == "voice":
+        start_time = time.time()
+        response = get_llm().invoke(messages[-4:] + [HumanMessage(content=prompt)])
+        elapsed = time.time() - start_time
+        print(f"{log_prefix} LLM took {elapsed:.2f}s")
+    else:
+        response = get_llm().invoke(messages[-4:] + [HumanMessage(content=prompt)])
     
     ai_content = response.content
     
-    # Strip unwanted prefixes
-    ai_content = ai_content.replace("Interviewer:", "").replace("Interviewer :", "").strip()
+    # Voice mode: Strip unwanted prefixes and truncate long responses
+    if mode == "voice":
+        ai_content = ai_content.replace("Interviewer:", "").replace("Interviewer :", "").strip()
+        
+        # Truncate conclusion responses if too long (prevent 30s TTS times)
+        if stage == "conclusion" and len(ai_content) > 150:
+            print(f"{log_prefix} ⚠️ Truncating long conclusion: {len(ai_content)} chars -> 150")
+            ai_content = ai_content[:150] + "..."
+        
+        # Strip markdown formatting for TTS
+        ai_content = ai_content.replace('**', '').replace('*', '').replace('_', '')
     
-    # Truncate conclusion responses if too long (prevent 30s TTS times)
-    if stage == "conclusion" and len(ai_content) > 150:
-        print(f"[Voice Interviewer] ⚠️ Truncating long conclusion: {len(ai_content)} chars -> 150")
-        ai_content = ai_content[:150] + "..."
-    ai_content = ai_content.replace('**', '').replace('*', '').replace('_', '')  # Strip markdown
-    
-    # Don't auto-end - let conclusion run its full turn count
-    # The transition logic will handle moving to "end" after conclusion turns are complete
     new_state = {
         "messages": messages + [AIMessage(content=ai_content)],
         "stage": stage,
@@ -148,22 +182,23 @@ def interviewer_node(state: InterviewState) -> dict:
         "stage_turn": stage_turn + 1
     }
     
-    print(f"[Voice Interviewer] Output - Stage: {new_state.get('stage', stage)}, Turn: {new_state['turn']}, StageTurn: {new_state['stage_turn']}")
+    print(f"{log_prefix} Output - Stage: {new_state.get('stage', stage)}, Turn: {new_state['turn']}, StageTurn: {new_state['stage_turn']}")
     return new_state
 
 def check_stage_transition(state: InterviewState) -> dict:
+    mode = state.get("mode", "text")
     stage = state.get("stage", "intro")
     stage_turn = state.get("stage_turn", 0)
     turn = state.get("turn", 0)
     
-    print(f"[Voice Transition] CALLED - Stage: {stage}, Turn: {turn}, StageTurn: {stage_turn}")
+    log_prefix = "[Voice Transition]" if mode == "voice" else "[Transition]"
     
     # Define stage order to prevent backwards movement
     stage_order = ["intro", "resume", "gap_challenge", "conclusion", "end"]
     current_idx = stage_order.index(stage) if stage in stage_order else 0
     
     config = STAGES.get(stage, {"turns": 2, "next": "end"})
-    print(f"[Voice Transition] Config for {stage}: turns={config['turns']}, next={config['next']}")
+    print(f"{log_prefix} Stage: {stage}, StageTurn: {stage_turn}/{config['turns']}")
     
     # Only advance if we've completed enough turns in this stage
     if stage_turn >= config["turns"]:
@@ -172,31 +207,36 @@ def check_stage_transition(state: InterviewState) -> dict:
         
         # CRITICAL: Only move forward, never backwards
         if next_idx > current_idx:
-            print(f"[Voice Transition] ✅ ADVANCING: {stage} -> {next_stage} (Turn {turn}, StageTurn {stage_turn})")
             updates = {"stage": next_stage, "stage_turn": 0}
             if next_stage == "end":
                 updates["ending"] = True
+            print(f"{log_prefix} ✅ Advancing: {stage} -> {next_stage} (Turn {turn})")
             return updates
         else:
-            print(f"[Voice Transition] ❌ BLOCKED backwards movement from {stage} to {next_stage}")
+            print(f"{log_prefix} ❌ BLOCKED backwards movement from {stage} to {next_stage}")
     else:
-        print(f"[Voice Transition] STAYING in {stage} - need {config['turns']} turns, at {stage_turn}")
+        print(f"{log_prefix} STAYING in {stage} - need {config['turns']} turns, at {stage_turn}")
     
     return {}
 
 def should_continue(state: InterviewState) -> Literal["continue", "evaluate"]:
+    mode = state.get("mode", "text")
     stage = state.get("stage")
     ending = state.get("ending", False)
-    print(f"[Voice should_continue] stage={stage}, ending={ending}")
+    
+    log_prefix = "[Voice should_continue]" if mode == "voice" else "[ShouldContinue]"
     
     if stage == "end" or ending:
-        print("[Voice should_continue] → Routing to EVALUATE")
+        print(f"{log_prefix} → Routing to EVALUATE")
         return "evaluate"
-    print("[Voice should_continue] → Routing to CONTINUE")
+    print(f"{log_prefix} → Routing to CONTINUE")
     return "continue"
 
 def evaluate_node(state: InterviewState) -> dict:
-    print("[Voice Evaluate] Starting evaluation...")
+    mode = state.get("mode", "text")
+    log_prefix = "[Voice Evaluate]" if mode == "voice" else "[Evaluate]"
+    print(f"{log_prefix} Starting evaluation...")
+    
     ctx = state.get("context", {})
     messages = state.get("messages", [])
     
@@ -261,20 +301,27 @@ def evaluate_node(state: InterviewState) -> dict:
         import traceback
         traceback.print_exc()
     
-    print(f"[Voice Evaluate] Complete - Verdict: {feedback.get('verdict', 'N/A')}, Score: {feedback.get('score', 0)}")
+    print(f"{log_prefix} Complete - Verdict: {feedback.get('verdict', 'N/A')}, Score: {feedback.get('score', 0)}")
     return {"feedback": feedback, "stage": "end"}
 
-workflow = StateGraph(InterviewState)
-workflow.add_node("interviewer", interviewer_node)
-workflow.add_node("evaluate", evaluate_node)
+# Build workflow graphs for both modes
+def _build_graph(checkpointer):
+    workflow = StateGraph(InterviewState)
+    workflow.add_node("interviewer", interviewer_node)
+    workflow.add_node("evaluate", evaluate_node)
+    
+    workflow.add_edge(START, "interviewer")
+    workflow.add_conditional_edges("interviewer", should_continue, {"continue": "interviewer", "evaluate": "evaluate"})
+    workflow.add_edge("evaluate", END)
+    
+    return workflow.compile(checkpointer=checkpointer, interrupt_after=["interviewer"])
 
-workflow.add_edge(START, "interviewer")
-workflow.add_conditional_edges("interviewer", should_continue, {"continue": "interviewer", "evaluate": "evaluate"})
-workflow.add_edge("evaluate", END)
+# Create both interview graphs
+chat_interview_graph = _build_graph(chat_checkpointer)
+voice_interview_graph = _build_graph(voice_checkpointer)
 
-interview_graph = workflow.compile(checkpointer=checkpointer, interrupt_after=["interviewer"])
-
-def create_initial_state(context: dict) -> InterviewState:
+def create_initial_state(context: dict, mode: str = "text") -> InterviewState:
+    """Create initial interview state with mode toggle."""
     return {
         "messages": [],
         "stage": "intro",
@@ -282,14 +329,26 @@ def create_initial_state(context: dict) -> InterviewState:
         "stage_turn": 0,
         "context": context,
         "feedback": None,
-        "ending": False
+        "ending": False,
+        "mode": mode
     }
+
+# Convenience aliases for backwards compatibility
+def create_chat_state(context: dict) -> InterviewState:
+    return create_initial_state(context, mode="text")
+
+def create_voice_state(context: dict) -> InterviewState:
+    return create_initial_state(context, mode="voice")
 
 def add_user_message(state: dict, user_text: str) -> dict:
     return {
         **state,
         "messages": state.get("messages", []) + [HumanMessage(content=user_text)]
     }
+
+# Convenience aliases for backwards compatibility
+add_chat_message = add_user_message
+add_voice_message = add_user_message
 
 def run_interview_turn(session_id: str, user_message: str, job_context: str) -> dict:
     """
@@ -310,11 +369,11 @@ def run_interview_turn(session_id: str, user_message: str, job_context: str) -> 
     # Get or create initial state
     try:
         # Try to get existing state from checkpointer
-        state = create_initial_state(context)
+        state = create_chat_state(context)
         if user_message:
             state = add_user_message(state, user_message)
         
-        result = interview_graph.invoke(state, config=config)
+        result = chat_interview_graph.invoke(state, config=config)
         
         ai_response = result["messages"][-1].content if result["messages"] else "Hello!"
         

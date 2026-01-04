@@ -41,8 +41,15 @@ from agents.agent_1_perception.graph import perception_node, app as perception_a
 from agents.agent_1_perception.github_watchdog import fetch_and_analyze_github  # <--- NEW IMPORT
 from agents.agent_2_market.graph import market_scan_node
 from agents.agent_3_strategist.graph import search_jobs as strategist_search_jobs, process_career_strategy
-from agents.agent_6_chat_interview.graph import interview_graph as chat_interview_graph, create_initial_state as create_chat_state, add_user_message as add_chat_message
-from agents.agent_6_interviewer.graph import interview_graph as voice_interview_graph, create_initial_state as create_voice_state, add_user_message as add_voice_message
+from agents.agent_5_interview.graph import (
+    chat_interview_graph, 
+    voice_interview_graph, 
+    create_chat_state, 
+    create_voice_state, 
+    add_chat_message, 
+    add_voice_message,
+    run_interview_turn
+)
 
 # Import services
 from services.audio_service import transcribe_audio_bytes, synthesize_audio_bytes
