@@ -1,203 +1,247 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import AgentTerminal, { AgentLog } from "@/components/AgentTerminal";
+import { useAuth } from "@/lib/AuthContext";
+import * as api from "@/lib/api";
+import type {
+  DashboardInsightsResponse,
+  JobInsight,
+  SkillInsight,
+  GitHubInsight,
+  NewsCard,
+} from "@/lib/api";
 import {
   Bot,
-  Zap,
   Target,
   TrendingUp,
   CheckCircle2,
-  AlertTriangle,
   ArrowRight,
   Sparkles,
   Building2,
   RefreshCw,
-  Radio,
   Github,
-  Terminal,
+  Activity,
+  Brain,
+  Newspaper,
+  GraduationCap,
+  ChevronRight,
+  Flame,
+  GitCommit,
+  ExternalLink,
+  User,
+  Settings,
+  LogOut,
   Loader2,
-  Activity
 } from "lucide-react";
-import { useSession } from "@/lib/SessionContext";
-import type { StrategyJobMatch } from "@/lib/api";
-import { checkWatchdog } from "@/lib/api";
+import AgentTerminal, { AgentLog } from "@/components/AgentTerminal";
+import JobCard from "@/components/JobCard";
 
-// --- NEW COMPONENT: LIVE ACTIVITY FEED ---
-// This shows the logs directly on the dashboard during Live Sync
-function LiveActivityFeed({ logs }: { logs: AgentLog[] }) {
-  // Show only the last 3 logs to keep it clean
-  const recentLogs = logs.slice(-3);
-
-  return (
-    <motion.div 
-      initial={{ opacity: 0, height: 0 }} 
-      animate={{ opacity: 1, height: "auto" }} 
-      exit={{ opacity: 0, height: 0 }}
-      className="mb-8 rounded-xl border bg-black/90 p-4 text-sm font-mono text-green-400 shadow-lg overflow-hidden"
-      style={{ borderColor: "#333" }}
-    >
-      <div className="flex items-center gap-2 mb-3 border-b border-gray-800 pb-2 text-xs text-gray-500 uppercase tracking-wider">
-        <Activity className="w-3 h-3 animate-pulse text-red-500" />
-        Live Neural Link Active
-      </div>
-      <div className="space-y-2">
-        {recentLogs.map((log) => (
-          <motion.div 
-            key={log.id} 
-            initial={{ opacity: 0, x: -10 }} 
-            animate={{ opacity: 1, x: 0 }}
-            className="flex items-start gap-2"
-          >
-            <span className="text-gray-600">[{new Date().toLocaleTimeString().split(" ")[0]}]</span>
-            <span className={log.type === 'success' ? 'text-green-400' : 'text-blue-300'}>
-              {log.type === 'success' ? '✓' : '>'} {log.message}
-            </span>
-          </motion.div>
-        ))}
-        {recentLogs.length === 0 && (
-          <div className="text-gray-600 italic">Listening for code changes...</div>
-        )}
-      </div>
-    </motion.div>
-  );
-}
-
-// --- STATIC DATA ---
-const SIMULATION_STEPS = [
-  { agent: "System", message: "Initializing AI pipeline...", type: "agent" as const },
-  { agent: "Agent 2 (Profiler)", message: "Loading user profile...", type: "agent" as const },
-  { agent: "Agent 2", message: "Extracting skills from resume...", type: "success" as const },
-  { agent: "Agent 3 (Strategist)", message: "Connecting to job market database...", type: "agent" as const },
-  { agent: "Agent 3", message: "Scanning 10,000+ active job listings...", type: "agent" as const },
-  { agent: "Agent 3", message: "Building skill-to-job embedding matrix...", type: "agent" as const },
-  { agent: "Agent 3", message: "Computing cosine similarity vectors...", type: "agent" as const },
-  { agent: "Agent 3", message: "Applying TF-IDF weighting to matches...", type: "agent" as const },
-  { agent: "Agent 3", message: "Ranking top candidates by alignment score...", type: "agent" as const },
-  { agent: "Agent 4 (Gap Analyzer)", message: "Detecting skill gaps for each match...", type: "agent" as const },
-  { agent: "Agent 4", message: "Mapping missing competencies to learning paths...", type: "agent" as const },
-  { agent: "Agent 4", message: "Generating personalized 7-day roadmaps...", type: "agent" as const },
-  { agent: "Agent 4", message: "Curating resources from top platforms...", type: "agent" as const },
-  { agent: "Agent 5 (Kit Builder)", message: "Preparing deployment kits...", type: "agent" as const },
-  { agent: "Agent 5", message: "Generating tailored cover letter templates...", type: "agent" as const },
-  { agent: "Agent 5", message: "Optimizing resume highlights for each role...", type: "agent" as const },
-  { agent: "System", message: "Processing large dataset, please wait...", type: "agent" as const },
-  { agent: "Agent 3", message: "Fine-tuning match rankings...", type: "agent" as const },
-  { agent: "Agent 4", message: "Optimizing roadmap sequences...", type: "agent" as const },
-  { agent: "Agent 5", message: "Finalizing application materials...", type: "agent" as const },
-];
+// ============================================================================
+// Types & Interfaces
+// ============================================================================
 
 interface JobMatch {
   id: string;
   title: string;
   company: string;
-  matchScore: number;
   location: string;
   salary?: string;
+  postedDate?: string;
+  matchScore: number;
   skills: string[];
   gapSkills?: string[];
   description?: string;
   link?: string;
 }
 
-function JobCard({ job, index }: { job: JobMatch; index: number }) {
-  const router = useRouter();
-  const isReady = job.matchScore >= 80;
-  const hasGaps = job.gapSkills && job.gapSkills.length > 0;
+interface StrategyJobMatch {
+  id?: string;
+  title: string;
+  company_name: string;
+  location: string;
+  salary?: string;
+  posted_date?: string;
+  score: number;
+  description?: string;
+  link?: string;
+  roadmap_details?: {
+    missing_skills?: string[];
+  };
+}
 
+interface SimulationStep {
+  agent: string;
+  message: string;
+  type: "agent" | "status" | "success" | "system";
+}
+
+// Simulation Steps Configuration
+const SIMULATION_STEPS: SimulationStep[] = [
+  { agent: "Agent 1 (Perception)", message: "Analyzing resume embeddings...", type: "agent" },
+  { agent: "Agent 1", message: "Extracting Skills, Education, Experience...", type: "agent" },
+  { agent: "Agent 1", message: "✓ Profile vector constructed (768 dims)", type: "status" },
+  { agent: "Agent 2 (Market Sentinel)", message: "Querying job market with semantic search...", type: "agent" },
+  { agent: "Agent 2", message: "Scanning 100,000+ active job listings...", type: "agent" },
+  { agent: "Agent 2", message: "✓ Retrieved 50 candidate matches", type: "status" },
+  { agent: "Agent 3 (Strategist)", message: "Running Gap Analysis Algorithm...", type: "agent" },
+  { agent: "Agent 3", message: "Scoring job-profile alignment...", type: "agent" },
+  { agent: "Agent 3", message: "✓ Match scores calculated", type: "status" },
+  { agent: "System", message: "✓ Strategy complete. Jobs ready.", type: "success" },
+];
+
+// ============================================================================
+// Helper Components
+// ============================================================================
+
+function AgentStatusCard({ status }: { status: string }) {
+  const isActive = status === "active" || status === "syncing";
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: index * 0.1 }}
-      className="group relative bg-surface rounded-xl border overflow-hidden transition-all duration-300 hover:shadow-lg hover:scale-[1.02]"
-      style={{ borderColor: "#E5E0D8" }}
+      className="bg-gradient-to-br from-[#D95D39] to-[#c54d2d] rounded-2xl p-6 text-white relative overflow-hidden h-full"
     >
-      <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: isReady ? "#22c55e" : hasGaps ? "#f59e0b" : "#D95D39" }} />
-      <div className="p-6">
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-serif-bold text-lg" style={{ backgroundColor: "#D95D39" }}>
-              {job.company.charAt(0)}
-            </div>
-            <div>
-              <h3 className="font-serif-bold text-lg text-ink line-clamp-1">{job.title}</h3>
-              <div className="flex items-center gap-2 text-sm text-secondary">
-                <Building2 className="w-3.5 h-3.5" />
-                {job.company}
-              </div>
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-2xl font-bold" style={{ color: isReady ? "#22c55e" : "#D95D39" }}>{job.matchScore}%</div>
-            <div className="text-xs text-secondary">Match</div>
-          </div>
-        </div>
-
-        <div className="mb-4">
-          {isReady ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Ready to Deploy
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
-              <AlertTriangle className="w-3.5 h-3.5" /> Gap Detected
-            </span>
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {job.skills.slice(0, 4).map((skill, i) => (
-            <span key={`${skill}-${i}`} className="px-2 py-1 rounded text-xs bg-gray-100 text-ink">{skill}</span>
-          ))}
-          {job.skills.length > 4 && (
-            <span className="px-2 py-1 rounded text-xs bg-gray-100 text-secondary">+{job.skills.length - 4}</span>
-          )}
-        </div>
-
-        {hasGaps && (
-          <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
-            <div className="text-xs font-medium text-amber-700 mb-2">Skills to Develop:</div>
-            <div className="flex flex-wrap gap-1.5">
-              {job.gapSkills?.map((skill, i) => (
-                <span key={`${skill}-${i}`} className="px-2 py-1 rounded text-xs bg-amber-100 text-amber-800">{skill}</span>
-              ))}
+      <div className="absolute inset-0 opacity-20">
+        {[...Array(20)].map((_, i) => (
+          <motion.div
+            key={i}
+            className="absolute w-2 h-2 bg-white rounded-full"
+            style={{ left: `${Math.random() * 100}%`, top: `${Math.random() * 100}%` }}
+            animate={{ opacity: [0.3, 1, 0.3], scale: [1, 1.5, 1] }}
+            transition={{ duration: 2 + Math.random() * 2, repeat: Infinity, delay: Math.random() * 2 }}
+          />
+        ))}
+      </div>
+      <div className="relative z-10">
+        <div className="flex items-center gap-3 mb-4">
+          <motion.div
+            animate={{ rotate: isActive ? 360 : 0 }}
+            transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+            className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm"
+          >
+            <Bot className="w-6 h-6" />
+          </motion.div>
+          <div>
+            <h3 className="font-semibold text-lg">AI Agents Active</h3>
+            <div className="flex items-center gap-2 text-white/80 text-sm">
+              <span className={`w-2 h-2 rounded-full ${isActive ? "bg-green-400 animate-pulse" : "bg-white/50"}`} />
+              {status === "syncing" ? "Analyzing your profile..." : "Monitoring job market"}
             </div>
           </div>
-        )}
-
-        <div className="flex items-center justify-between text-sm text-secondary mb-4">
-          <span>{job.location}</span>
-          {job.salary && <span>{job.salary}</span>}
         </div>
+        <p className="text-white/90 text-sm leading-relaxed">
+          Our AI agents are continuously working on your career profile, scanning job markets, and finding the best opportunities.
+        </p>
+      </div>
+    </motion.div>
+  );
+}
 
-        <div className="flex gap-2">
-          {isReady ? (
-            <button onClick={() => router.push(`/jobs/${job.id}/apply`)} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-white font-medium transition-all hover:opacity-90" style={{ backgroundColor: "#D95D39" }}>
-              <Zap className="w-4 h-4" /> Deploy Kit
-            </button>
-          ) : (
-            <>
-              <button onClick={() => router.push(`/jobs/${job.id}`)} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border font-medium transition-all hover:bg-gray-50" style={{ borderColor: "#E5E0D8" }}>
-                <Target className="w-4 h-4" /> View Roadmap
-              </button>
-              <button onClick={() => router.push(`/jobs/${job.id}/apply`)} className="flex items-center justify-center px-4 py-3 rounded-lg text-white font-medium transition-all hover:opacity-90" style={{ backgroundColor: "#D95D39" }}>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </>
-          )}
+function ProfileStrengthCard({ strength }: { strength: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.1 }}
+      className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm h-full"
+    >
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold text-gray-900">Profile Strength</h3>
+        <GraduationCap className="w-5 h-5 text-[#D95D39]" />
+      </div>
+      <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden mb-3">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${strength}%` }}
+          transition={{ duration: 1, ease: "easeOut" }}
+          className="absolute h-full rounded-full"
+          style={{
+            background: strength >= 80 ? "linear-gradient(90deg, #22c55e, #16a34a)"
+              : strength >= 50 ? "linear-gradient(90deg, #D95D39, #c54d2d)"
+              : "linear-gradient(90deg, #f59e0b, #d97706)",
+          }}
+        />
+      </div>
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-gray-500">
+          {strength >= 80 ? "Excellent!" : strength >= 50 ? "Good progress" : "Needs attention"}
+        </span>
+        <span className="font-semibold text-gray-900">{strength}%</span>
+      </div>
+    </motion.div>
+  );
+}
+
+function HotSkillCard({ skill, index }: { skill: SkillInsight; index: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ delay: index * 0.1 }}
+      className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl border border-orange-200 p-4"
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <Flame className="w-4 h-4 text-orange-500" />
+        <span className="font-medium text-gray-900">{skill.skill}</span>
+        {skill.demand_trend === "rising" && <TrendingUp className="w-4 h-4 text-green-500" />}
+      </div>
+      <p className="text-sm text-gray-600">{skill.reason}</p>
+    </motion.div>
+  );
+}
+
+function NewsCardComponent({ news, index }: { news: NewsCard; index: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.1 }}
+      className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition-shadow"
+    >
+      <div className="flex items-start gap-3">
+        <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+          <Newspaper className="w-4 h-4 text-blue-500" />
+        </div>
+        <div>
+          <h4 className="font-medium text-gray-900 mb-1">{news.title}</h4>
+          <p className="text-sm text-gray-600 line-clamp-2">{news.summary}</p>
+          <span className="text-xs text-gray-400 mt-2 inline-block">{news.relevance}</span>
         </div>
       </div>
     </motion.div>
   );
 }
 
+// Watchdog check function
+async function checkWatchdog(sessionId: string, lastSha?: string) {
+  try {
+    // FIX: Call the specific function instead of api.get
+    const data = await api.checkWatchdogStatus(sessionId, lastSha);
+    return data;
+  } catch (error) {
+    console.error("Watchdog check failed:", error);
+    return { status: "no_change" };
+  }
+}
+
+// ============================================================================
+// Main Dashboard Component
+// ============================================================================
+
 export default function Dashboard() {
   const router = useRouter();
-  const { runStrategy, strategyJobs, profile, isLoading, error, sessionId } = useSession();
+  const { isAuthenticated, isLoading: authLoading, user, signOut } = useAuth();
 
+  // Unified State
+  const [profile, setProfile] = useState<any>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [insights, setInsights] = useState<DashboardInsightsResponse | null>(null);
+
+  // Simulation & Process State
   const [showJobs, setShowJobs] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
@@ -205,16 +249,35 @@ export default function Dashboard() {
   const [currentStep, setCurrentStep] = useState(0);
   const [apiComplete, setApiComplete] = useState(false);
   const hasRunStrategyRef = useRef(false);
-  
-  // State to manage modes (Standard vs Live Sync)
+
+  // GitHub Sync State (Single button, no auto-polling)
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{
+    insights?: { message: string; repos_active?: string[]; tech_stack?: string[] };
+    newSkills?: string[];
+    updatedSkills?: string[];
+    fromCache?: boolean;
+  } | null>(null);
   const [processMode, setProcessMode] = useState<'onboarding' | 'sync'>('onboarding');
-  
-  // LIVE MODE STATE
-  const [isLiveMode, setIsLiveMode] = useState(false);
-  const [lastSha, setLastSha] = useState<string | undefined>(undefined);
-  
-  // Refs to prevent duplicate execution
   const hasStartedSimulation = useRef(false);
+
+  // Mock function for runStrategy (Replace with actual API call)
+  const runStrategy = useCallback(async (query?: string, force?: boolean) => {
+    try {
+        // Simulating API latency
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // This should be your actual API call:
+        // const res = await api.getStrategyJobs(query);
+        // return res.data;
+        
+        // Return true to simulate success
+        return true; 
+    } catch (e) {
+        console.error("Strategy run failed", e);
+        return false;
+    }
+  }, []);
 
   const transformStrategyJobs = useCallback((strategyJobs: StrategyJobMatch[]): JobMatch[] => {
     return strategyJobs.map((job, index) => {
@@ -229,9 +292,9 @@ export default function Dashboard() {
       return {
         id: job.id || String(index + 1),
         title: job.title,
-        company: job.company,
+        company: job.company_name,
         matchScore: score,
-        location: job.link && job.link !== "null" ? "See posting" : "Remote",
+        location: job.location,
         skills: skills.length > 0 ? skills : ["Technical Skills"],
         gapSkills: missingSkills.length > 0 ? missingSkills : undefined,
         description: job.description,
@@ -240,14 +303,50 @@ export default function Dashboard() {
     });
   }, []);
 
-  // 1. Initial Strategy Run
+  // 1. Initial Data Fetch
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      if (!isAuthenticated) return;
+
+      try {
+        const status = await api.getOnboardingStatus();
+        if (status.needs_onboarding) {
+          router.push("/onboarding");
+          return;
+        }
+
+        // Fetch basic dashboard insights
+        const data = await api.getDashboardInsights();
+        setInsights(data);
+        
+        // Set profile/session for simulation
+        setProfile({ name: data.user_name || "User" });
+        setSessionId("session-" + Date.now()); // Mock session
+
+      } catch (err) {
+        console.error("Failed to fetch dashboard:", err);
+        setError("Failed to load dashboard. Please try again.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (!authLoading) {
+      if (!isAuthenticated) {
+        router.push("/login");
+      } else {
+        fetchDashboard();
+      }
+    }
+  }, [isAuthenticated, authLoading, router]);
+
+  // 2. Initial Strategy Run (Simulation Logic)
   useEffect(() => {
     const runAgentWorkflow = async () => {
       if (!sessionId || !profile || hasRunStrategyRef.current) return;
       hasRunStrategyRef.current = true;
 
-      const strategyPromise = runStrategy();
-      const success = await strategyPromise;
+      const success = await runStrategy();
       setApiComplete(true);
 
       if (processMode === 'onboarding') {
@@ -263,7 +362,7 @@ export default function Dashboard() {
     runAgentWorkflow();
   }, [sessionId, profile, processMode, runStrategy]);
 
-  // 2. Simulation Effect (Only for onboarding)
+  // 3. Simulation Animation
   useEffect(() => {
     if (!isInitializing || apiComplete || processMode !== 'onboarding') return;
 
@@ -305,132 +404,74 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [isInitializing, apiComplete, currentStep, processMode]);
 
-  // 3. --- LIVE WATCHDOG POLLING EFFECT (ENHANCED) ---
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout;
-
-    if (isLiveMode && sessionId) {
-      setProcessMode('sync');
+  // 4. GitHub Sync Handler (Single button click - no auto-polling)
+  const handleGitHubSync = useCallback(async () => {
+    if (!sessionId || isSyncing) return;
+    
+    setIsSyncing(true);
+    setSyncResult(null);
+    
+    try {
+      const result = await checkWatchdog(sessionId);
       
-      // Log Start
-      setAgentLogs(prev => {
-        if (prev.some(log => log.message.includes("LIVE SYNC STARTED"))) return prev;
-        return [...prev, {
-          id: `live-start-${Date.now()}`,
-          agent: "Digital Twin Watchdog",
-          message: "🔴 LIVE SYNC STARTED: Listening for GitHub commits...",
-          type: "agent",
+      if (result.status === "updated") {
+        setSyncResult({
+          insights: result.insights,
+          newSkills: result.new_skills || [],
+          updatedSkills: result.updated_skills || [],
+          fromCache: result.from_cache || false,
+        });
+        
+        // Show success log with cache indicator
+        const cacheIndicator = result.from_cache ? " (from cache)" : " (fresh analysis)";
+        setAgentLogs(prev => [...prev, {
+          id: `sync-success-${Date.now()}`,
+          agent: "GitHub Watchdog",
+          message: `✓ ${result.insights?.message || "GitHub synced!"}${cacheIndicator}`,
+          type: "success",
           delay: 0
-        }];
+        }]);
+      } else if (result.status === "no_activity") {
+        setSyncResult({
+          insights: { message: "No recent GitHub activity found. Push some code to see your skills!" }
+        });
+      } else if (result.status === "no_github") {
+        setSyncResult({
+          insights: { message: "GitHub URL not configured. Add it in settings to sync your activity." }
+        });
+      } else {
+        setSyncResult({
+          insights: { message: "Your profile is already up to date!" }
+        });
+      }
+    } catch (e) {
+      console.error("GitHub sync error:", e);
+      setSyncResult({
+        insights: { message: "Failed to sync GitHub. Please try again." }
       });
-
-      intervalId = setInterval(async () => {
-        try {
-          const result = await checkWatchdog(sessionId, lastSha);
-
-          if (result.status === "updated" && result.new_sha && result.new_sha !== lastSha) {
-            setLastSha(result.new_sha);
-
-            // 1. Log Detection Immediately
-            setAgentLogs(prev => [...prev, {
-              id: `live-detect-${Date.now()}`,
-              agent: "Watchdog",
-              message: `⚡ CHANGE DETECTED in ${result.repo_name}!`,
-              type: "success",
-              delay: 0
-            }]);
-
-            // 2. Add "Filler" logs to show processing steps (Visual Feedback)
-            setTimeout(() => {
-               setAgentLogs(prev => [...prev, {
-                id: `live-analysis-${Date.now()}`,
-                agent: "Watchdog",
-                message: `🧠 Analyzing code semantics and diffs...`,
-                type: "agent",
-                delay: 0
-              }]);
-            }, 500);
-
-            setTimeout(() => {
-               setAgentLogs(prev => [...prev, {
-                id: `live-update-db-${Date.now()}`,
-                agent: "Watchdog",
-                message: `💾 Updating User Knowledge Graph...`,
-                type: "agent",
-                delay: 0
-              }]);
-            }, 1200);
-            
-            if (result.updated_skills && result.updated_skills.length > 0) {
-              const freshSkills = result.updated_skills.slice(0, 5); 
-              
-              setTimeout(() => {
-                setAgentLogs(prev => [...prev, {
-                  id: `live-skills-${Date.now()}`,
-                  agent: "Watchdog",
-                  message: `✓ Extracted: ${freshSkills.join(", ")}...`,
-                  type: "success",
-                  delay: 0
-                }]);
-              }, 2000);
-
-              // Clear jobs to show refresh is happening
-              setJobs([]); 
-
-              // Boosted Query
-              const boostedQuery = `
-                Job Title: ${freshSkills[0]} Engineer or Specialist.
-                Key Requirements: ${freshSkills.join(", ")}.
-                Domain: ${freshSkills[0]} and ${freshSkills[1]}.
-                Focus: Strictly related to ${freshSkills[0]}.
-              `.replace(/\s+/g, " ").trim();
-
-              console.log("🚀 Sending PURE Query:", boostedQuery);
-
-              setTimeout(async () => {
-                setAgentLogs(prev => [...prev, {
-                  id: `live-jobs-start-${Date.now()}`,
-                  agent: "Agent 3",
-                  message: `🎯 PIVOTING STRATEGY: Focusing 100% on ${freshSkills[0]}...`,
-                  type: "agent",
-                  delay: 0
-                }]);
-
-                await runStrategy(boostedQuery, true);
-
-                setAgentLogs(prev => [...prev, {
-                  id: `live-jobs-end-${Date.now()}`,
-                  agent: "System",
-                  message: "✓ Strategy Board Updated.",
-                  type: "success",
-                  delay: 0
-                }]);
-              }, 2500); // Wait for animations
-            }
-          } 
-        } catch (e) {
-          console.error("Watchdog polling error", e);
-        }
-      }, 10000); 
-    } else if (!isLiveMode && lastSha) {
-       setAgentLogs(prev => [...prev, {
-        id: `live-stop-${Date.now()}`,
-        agent: "System",
-        message: "Live Sync Paused.",
-        type: "system",
-        delay: 0
-      }]);
+    } finally {
+      setIsSyncing(false);
     }
+  }, [sessionId, isSyncing]);
 
-    return () => clearInterval(intervalId);
-  }, [isLiveMode, sessionId, lastSha, runStrategy]);
-
-
+  // Combine insights jobs and strategy jobs if needed
   useEffect(() => {
-    if (strategyJobs.length > 0) {
-      setJobs(transformStrategyJobs(strategyJobs));
+    if (insights?.top_jobs) {
+        // If strategy returns jobs, use those, otherwise fall back to insights
+        // For now, mapping insights to JobMatch format for the unified grid
+        const mapped = insights.top_jobs.map(j => ({
+            id: j.id,
+            title: j.title,
+            company: j.company,
+            matchScore: j.match_score,
+            location: "Remote", // Defaulting as example
+            skills: j.key_skills,
+            postedDate: "Recent"
+        }));
+        setJobs(mapped);
     }
-  }, [strategyJobs, transformStrategyJobs]);
+  }, [insights]);
+
 
   const handleAgentComplete = () => {
     setTimeout(() => {
@@ -470,15 +511,53 @@ export default function Dashboard() {
     }]);
   };
 
+  // Loading state
+  if (authLoading || (isLoading && !isInitializing)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F7F5F0]">
+        <div className="text-center">
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+            className="w-14 h-14 bg-[#D95D39] rounded-xl flex items-center justify-center mx-auto mb-4"
+          >
+            <Bot className="w-7 h-7 text-white" />
+          </motion.div>
+          <p className="text-gray-600">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
   const readyJobs = jobs.filter((j) => j.matchScore >= 80).length;
   const gapJobs = jobs.filter((j) => j.matchScore < 80).length;
   const avgMatch = jobs.length > 0 ? Math.round(jobs.reduce((acc, j) => acc + j.matchScore, 0) / jobs.length) : 0;
 
   return (
-    <div className="min-h-screen bg-canvas">
+    <div className="min-h-screen bg-[#F7F5F0]">
+      {/* ==================== 1. Header ==================== */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-[#D95D39] rounded-xl flex items-center justify-center">
+              <Bot className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="font-bold text-gray-900">Erflog</h1>
+              <p className="text-xs text-gray-500">AI Career Platform</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+             <button onClick={() => router.push("/settings")} className="p-2 text-gray-600 hover:text-gray-900"><Settings className="w-5 h-5" /></button>
+             <button onClick={() => signOut()} className="p-2 text-red-600 hover:bg-red-50 rounded"><LogOut className="w-5 h-5" /></button>
+          </div>
+        </div>
+      </header>
+
+      {/* ==================== 2. Agent Overlay (Onboarding) ==================== */}
       <AnimatePresence>
         {isInitializing && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-canvas/95 backdrop-blur-sm">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-[#F7F5F0]/95 backdrop-blur-sm">
             <div className="w-full max-w-2xl px-8">
               <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8">
                 <div className="flex items-center justify-center gap-3 mb-4">
@@ -486,99 +565,246 @@ export default function Dashboard() {
                     <Bot className="w-7 h-7 text-white" />
                   </motion.div>
                 </div>
-                <h2 className="font-serif-bold text-3xl text-ink mb-2">Multi-Agent Orchestration</h2>
-                <p className="text-secondary mb-3">{profile ? `Analyzing career opportunities for ${profile.name}...` : "Coordinating swarm intelligence..."}</p>
+                <h2 className="text-3xl font-bold text-gray-900 mb-2">Multi-Agent Orchestration</h2>
+                <p className="text-gray-600 mb-3">{profile ? `Analyzing career opportunities for ${profile.name}...` : "Coordinating swarm intelligence..."}</p>
                 <div className="max-w-md mx-auto mb-4">
                   <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
                     <motion.div className="h-full rounded-full" style={{ backgroundColor: "#D95D39" }} initial={{ width: "0%" }} animate={{ width: apiComplete ? "100%" : ["0%", "70%", "85%", "90%"] }} transition={{ duration: apiComplete ? 0.3 : 30, ease: apiComplete ? "easeOut" : "easeInOut" }} />
                   </div>
-                  <div className="flex justify-between mt-2 text-xs text-secondary"><span>Processing</span><span>{apiComplete ? "Complete!" : "Please wait..."}</span></div>
                 </div>
-                <p className="text-xs text-secondary/70">⏱️ First-time analysis takes 30-60 seconds.</p>
               </motion.div>
               <AgentTerminal logs={agentLogs} onComplete={handleAgentComplete} title="Swarm Coordinator v2.0" />
-              {error && <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center text-amber-600 text-sm mt-4">{error} - Using cached data if available</motion.p>}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="py-12 px-8">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: showJobs ? 1 : 0, y: showJobs ? 0 : 20 }} className="max-w-7xl mx-auto mb-12">
+      {/* ==================== 3. Main Content ==================== */}
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        
+        {/* Welcome Section */}
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8 flex justify-between items-end">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {insights?.user_name?.split(" ")[0] || "there"}! 👋</h2>
+            <p className="text-gray-600">Your AI career assistant is working 24/7 to find opportunities for you.</p>
+          </div>
           
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="font-serif-bold text-4xl text-ink mb-2">Strategy Board</h1>
-              <p className="text-secondary">{profile ? `Job matches for ${profile.name}` : "Your personalized job matches"}</p>
-            </div>
-            <div className="flex items-center gap-3">
-              {/* --- NEW LIVE SYNC BUTTON --- */}
+          {/* Controls */}
+          <div className="flex items-center gap-3">
               <button
-                onClick={() => setIsLiveMode(!isLiveMode)}
-                disabled={isLoading}
+                onClick={handleGitHubSync}
+                disabled={isSyncing}
                 className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm border transition-all ${
-                  isLiveMode 
-                    ? "bg-red-50 border-red-200 text-red-600 animate-pulse" 
-                    : "hover:bg-gray-50 border-[#E5E0D8]"
+                  isSyncing 
+                    ? "bg-gray-100 border-gray-300 text-gray-500" 
+                    : "bg-white hover:bg-gray-50 border-gray-200 hover:border-gray-300"
                 }`}
               >
-                {isLiveMode ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radio className="w-4 h-4" />}
-                {isLiveMode ? "Live Listening..." : "Start Live Sync"}
+                {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Github className="w-4 h-4" />}
+                {isSyncing ? "Syncing..." : "Sync GitHub"}
               </button>
 
-              <button onClick={handleRefresh} disabled={isLoading} className="flex items-center gap-2 px-4 py-2 rounded-full text-sm border transition-all hover:bg-gray-50 disabled:opacity-50" style={{ borderColor: "#E5E0D8" }}>
+              <button onClick={handleRefresh} disabled={isLoading} className="flex items-center gap-2 px-4 py-2 rounded-full text-sm border bg-white border-gray-200 hover:bg-gray-50">
                 <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} /> Refresh
               </button>
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full text-sm" style={{ backgroundColor: "#D95D39", color: "white" }}>
-                <Sparkles className="w-4 h-4" /> {jobs.length} Matches Found
-              </div>
-            </div>
-          </div>
-
-          {/* --- RENDER LIVE ACTIVITY FEED IF ACTIVE --- */}
-          <AnimatePresence>
-            {isLiveMode && (
-              <LiveActivityFeed logs={agentLogs} />
-            )}
-          </AnimatePresence>
-
-          <div className="grid grid-cols-3 gap-6 mb-8">
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-surface rounded-xl border p-6" style={{ borderColor: "#E5E0D8" }}>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center"><CheckCircle2 className="w-5 h-5 text-green-600" /></div>
-                <div><div className="text-2xl font-bold text-ink">{readyJobs}</div><div className="text-sm text-secondary">Ready to Deploy</div></div>
-              </div>
-            </motion.div>
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-surface rounded-xl border p-6" style={{ borderColor: "#E5E0D8" }}>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center"><Target className="w-5 h-5 text-amber-600" /></div>
-                <div><div className="text-2xl font-bold text-ink">{gapJobs}</div><div className="text-sm text-secondary">Gaps Detected</div></div>
-              </div>
-            </motion.div>
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="bg-surface rounded-xl border p-6" style={{ borderColor: "#E5E0D8" }}>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center"><TrendingUp className="w-5 h-5" style={{ color: "#D95D39" }} /></div>
-                <div><div className="text-2xl font-bold text-ink">{avgMatch}%</div><div className="text-sm text-secondary">Avg Match Score</div></div>
-              </div>
-            </motion.div>
           </div>
         </motion.div>
 
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: showJobs ? 1 : 0 }} className="max-w-7xl mx-auto">
-          {jobs.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {jobs.map((job, index) => (
-                 <JobCard key={`${job.id}-${index}`} job={job} index={index} />
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <p className="text-secondary">No job matches found.</p>
-              <button onClick={() => router.push("/")} className="mt-4 px-6 py-3 rounded-lg font-medium text-white" style={{ backgroundColor: "#D95D39" }}>Upload Resume</button>
-            </div>
+        {/* GitHub Sync Result Card */}
+        <AnimatePresence>
+          {syncResult && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10, scale: 0.98 }} 
+              animate={{ opacity: 1, y: 0, scale: 1 }} 
+              exit={{ opacity: 0, y: -10, scale: 0.98 }}
+              transition={{ type: "spring", duration: 0.5 }}
+              className="mb-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-6 text-white shadow-xl border border-slate-700/50"
+            >
+              <div className="flex items-start gap-4">
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 ${
+                  syncResult.fromCache 
+                    ? "bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30" 
+                    : "bg-gradient-to-br from-green-500/20 to-emerald-500/20 border border-green-500/30"
+                }`}>
+                  <Github className={`w-7 h-7 ${syncResult.fromCache ? "text-amber-400" : "text-green-400"}`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className="font-bold text-xl">GitHub Sync Complete</h3>
+                    {/* Cache indicator badge */}
+                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                      syncResult.fromCache 
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" 
+                        : "bg-green-500/20 text-green-300 border border-green-500/30"
+                    }`}>
+                      {syncResult.fromCache ? "⚡ Cached" : "✨ Fresh Analysis"}
+                    </span>
+                  </div>
+                  <p className="text-slate-300 text-sm mb-4">{syncResult.insights?.message}</p>
+                  
+                  {/* Skills Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Skills (New or Detected based on cache) */}
+                    {syncResult.newSkills && syncResult.newSkills.length > 0 && (
+                      <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Sparkles className={`w-4 h-4 ${syncResult.fromCache ? "text-amber-400" : "text-green-400"}`} />
+                          <span className={`text-xs font-semibold uppercase tracking-wide ${syncResult.fromCache ? "text-amber-400" : "text-green-400"}`}>
+                            {syncResult.fromCache ? "Detected Skills" : "New Skills"}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {syncResult.newSkills.slice(0, 5).map((skill, idx) => (
+                            <span key={idx} className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
+                              syncResult.fromCache 
+                                ? "bg-amber-500/10 text-amber-300 border-amber-500/20" 
+                                : "bg-green-500/10 text-green-300 border-green-500/20"
+                            }`}>
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Tech Stack */}
+                    {syncResult.insights?.tech_stack && syncResult.insights.tech_stack.length > 0 && (
+                      <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Brain className="w-4 h-4 text-blue-400" />
+                          <span className="text-xs text-blue-400 font-semibold uppercase tracking-wide">Tech Stack</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {syncResult.insights.tech_stack.map((tech, idx) => (
+                            <span key={idx} className="px-3 py-1.5 bg-blue-500/10 text-blue-300 rounded-lg text-sm font-medium border border-blue-500/20">
+                              {tech}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Active Repos */}
+                    {syncResult.insights?.repos_active && syncResult.insights.repos_active.length > 0 && (
+                      <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
+                        <div className="flex items-center gap-2 mb-3">
+                          <GitCommit className="w-4 h-4 text-purple-400" />
+                          <span className="text-xs text-purple-400 font-semibold uppercase tracking-wide">Active Repos</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {syncResult.insights.repos_active.map((repo, idx) => (
+                            <span key={idx} className="px-3 py-1.5 bg-purple-500/10 text-purple-300 rounded-lg text-sm font-medium border border-purple-500/20">
+                              {repo.split('/').pop()}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Close button */}
+                <button 
+                  onClick={() => setSyncResult(null)}
+                  className="text-slate-500 hover:text-white transition-colors p-1 hover:bg-slate-700/50 rounded-lg"
+                >
+                  ✕
+                </button>
+              </div>
+            </motion.div>
           )}
-        </motion.div>
-      </div>
+        </AnimatePresence>
+
+        {/* Top Stats Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div className="lg:col-span-2">
+            <AgentStatusCard status={insights?.agent_status || "active"} />
+          </div>
+          <ProfileStrengthCard strength={insights?.profile_strength || 0} />
+        </div>
+
+        {/* Strategy / Job Board */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Left: Job Matches (Wide) */}
+          <div className="lg:col-span-2 space-y-6">
+             <div className="flex gap-4 mb-4">
+                 <div className="flex-1 bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
+                    <CheckCircle2 className="text-green-500" />
+                    <div><div className="font-bold text-xl">{readyJobs}</div><div className="text-xs text-gray-500">Ready</div></div>
+                 </div>
+                 <div className="flex-1 bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
+                    <Target className="text-amber-500" />
+                    <div><div className="font-bold text-xl">{gapJobs}</div><div className="text-xs text-gray-500">Gaps</div></div>
+                 </div>
+                 <div className="flex-1 bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
+                    <TrendingUp className="text-[#D95D39]" />
+                    <div><div className="font-bold text-xl">{avgMatch}%</div><div className="text-xs text-gray-500">Match</div></div>
+                 </div>
+             </div>
+
+             <div className="space-y-4">
+              {jobs.length > 0 ? (
+                jobs.map((job) => (
+                  <JobCard 
+                    key={job.id}
+                    id={job.id}
+                    companyName={job.company}
+                    jobTitle={job.title}
+                    matchScore={job.matchScore}
+                    // Optional: Add simple handlers or connect to your real logic
+                    onAnalyzeGap={(id) => console.log("Analyze gap for:", id)}
+                    onDeploy={(id) => console.log("Deploy:", id)}
+                  />
+                ))
+              ) : (
+                <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
+                  <p className="text-gray-500">No job matches found yet.</p>
+                </div>
+              )}
+             </div>
+          </div>
+
+          {/* Right: Insights & News */}
+          <div className="space-y-6">
+            {/* Hot Skills */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
+                  <Sparkles className="w-5 h-5 text-orange-500" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900">Hot Skills</h3>
+                  <p className="text-sm text-gray-500">Trending to learn</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {insights?.hot_skills?.map((skill, idx) => (
+                  <HotSkillCard key={skill.skill} skill={skill} index={idx} />
+                ))}
+              </div>
+            </div>
+
+            {/* News */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+                  <Newspaper className="w-5 h-5 text-blue-500" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900">Industry News</h3>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {insights?.news_cards?.map((news, idx) => (
+                  <NewsCardComponent key={idx} news={news} index={idx} />
+                ))}
+              </div>
+            </div>
+            
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

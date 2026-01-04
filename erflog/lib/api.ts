@@ -17,12 +17,38 @@ const api = axios.create({
 
 api.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    try {
+      // First try to get session from Supabase client
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    if (session?.access_token) {
-      config.headers.Authorization = `Bearer ${session.access_token}`;
+      if (session?.access_token) {
+        config.headers.Authorization = `Bearer ${session.access_token}`;
+        return config;
+      }
+
+      // Fallback: Try to get token from localStorage directly
+      // Supabase stores auth in localStorage with key like sb-<project-ref>-auth-token
+      if (typeof window !== "undefined") {
+        const keys = Object.keys(localStorage);
+        const supabaseAuthKey = keys.find(
+          (key) => key.startsWith("sb-") && key.endsWith("-auth-token")
+        );
+
+        if (supabaseAuthKey) {
+          const authData = localStorage.getItem(supabaseAuthKey);
+          if (authData) {
+            const parsed = JSON.parse(authData);
+            const accessToken = parsed?.access_token;
+            if (accessToken) {
+              config.headers.Authorization = `Bearer ${accessToken}`;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error getting auth token:", error);
     }
 
     return config;
@@ -40,6 +66,127 @@ export interface AuthUser {
   user_id: string;
   email: string | null;
   provider: string | null;
+}
+
+// ============================================================================
+// Onboarding Types
+// ============================================================================
+
+export interface EducationItem {
+  institution: string;
+  degree: string;
+  course?: string;
+  year?: string;
+}
+
+export interface OnboardingStatusResponse {
+  status: string;
+  needs_onboarding: boolean;
+  onboarding_step: number | null;
+  profile_complete: boolean;
+  has_resume: boolean;
+  has_quiz_completed: boolean;
+}
+
+export interface OnboardingCompleteRequest {
+  name: string;
+  email?: string;
+  skills: string[];
+  target_roles: string[];
+  education: EducationItem[];
+  experience_summary?: string;
+  github_url?: string;
+  linkedin_url?: string;
+  has_resume: boolean;
+}
+
+export interface QuizQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correct_index: number;
+  skill_being_tested: string;
+}
+
+export interface OnboardingQuizResponse {
+  status: string;
+  questions: QuizQuestion[];
+}
+
+export interface QuizAnswer {
+  question_id: string;
+  selected_index: number;
+  correct_index: number;
+}
+
+export interface QuizSubmitResponse {
+  status: string;
+  score: number;
+  correct: number;
+  total: number;
+  message: string;
+  onboarding_complete: boolean;
+}
+
+// ============================================================================
+// Dashboard Types
+// ============================================================================
+
+export interface JobInsight {
+  id: string;
+  title: string;
+  company: string;
+  match_score: number;
+  key_skills: string[];
+}
+
+export interface SkillInsight {
+  skill: string;
+  demand_trend: string;
+  reason: string;
+}
+
+export interface GitHubInsight {
+  repo_name: string;
+  recent_commits: number;
+  detected_skills: string[];
+  insight_text: string;
+}
+
+export interface NewsCard {
+  title: string;
+  summary: string;
+  relevance: string;
+}
+
+export interface DashboardInsightsResponse {
+  status: string;
+  user_name: string;
+  profile_strength: number;
+  top_jobs: JobInsight[];
+  hot_skills: SkillInsight[];
+  github_insights: GitHubInsight | null;
+  news_cards: NewsCard[];
+  agent_status: string;
+}
+
+// ============================================================================
+// Resume Upload Response (from perception)
+// ============================================================================
+
+export interface ResumeUploadResponse {
+  status: string;
+  data: {
+    user_id: string;
+    name?: string;
+    email?: string;
+    skills: string[];
+    skills_metadata: Record<string, unknown>;
+    experience_summary?: string;
+    education?: Array<{ institution: string; degree: string }>;
+    resume_json?: Record<string, unknown>;
+    resume_url?: string;
+  };
 }
 
 // ============================================================================
@@ -130,7 +277,7 @@ export interface RoadmapGraph {
 export interface RoadmapDetails {
   missing_skills: string[];
   graph: RoadmapGraph;
-  resources: Record<string, RoadmapResource[]>; 
+  resources: Record<string, RoadmapResource[]>;
 }
 
 export interface StrategyJobMatch {
@@ -240,27 +387,57 @@ export async function uploadResume(
   formData.append("file", file);
   formData.append("session_id", sessionId);
   if (githubUrl) formData.append("github_url", githubUrl);
-  const response = await api.post<UploadResumeResponse>("/api/upload-resume", formData, { headers: { "Content-Type": "multipart/form-data" } });
+  const response = await api.post<UploadResumeResponse>(
+    "/api/upload-resume",
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
   return response.data;
 }
 
-export async function syncGithub(sessionId: string, githubUrl: string): Promise<SyncGithubResponse> {
-  const response = await api.post<SyncGithubResponse>("/api/sync-github", { session_id: sessionId, github_url: githubUrl });
+export async function syncGithub(
+  sessionId: string,
+  githubUrl: string
+): Promise<SyncGithubResponse> {
+  const response = await api.post<SyncGithubResponse>("/api/sync-github", {
+    session_id: sessionId,
+    github_url: githubUrl,
+  });
   return response.data;
 }
 
-export async function checkWatchdog(sessionId: string, lastKnownSha?: string): Promise<WatchdogCheckResponse> {
-  const response = await api.post<WatchdogCheckResponse>("/api/watchdog/check", { session_id: sessionId, last_known_sha: lastKnownSha });
+export async function checkWatchdog(
+  sessionId: string,
+  lastKnownSha?: string
+): Promise<WatchdogCheckResponse> {
+  const response = await api.post<WatchdogCheckResponse>(
+    "/api/watchdog/check",
+    { session_id: sessionId, last_known_sha: lastKnownSha }
+  );
   return response.data;
 }
 
-export async function generateStrategy(query: string): Promise<GenerateStrategyResponse> {
-  const response = await api.post<GenerateStrategyResponse>("/api/generate-strategy", { query });
+export async function generateStrategy(
+  query: string
+): Promise<GenerateStrategyResponse> {
+  const response = await api.post<GenerateStrategyResponse>(
+    "/api/generate-strategy",
+    { query }
+  );
   return response.data;
 }
 
-export async function generateApplication(sessionId: string, jobDescription?: string): Promise<GenerateApplicationResponse> {
-  const response = await api.post<GenerateApplicationResponse>("/api/generate-application", { session_id: sessionId, ...(jobDescription && { job_description: jobDescription }) });
+export async function generateApplication(
+  sessionId: string,
+  jobDescription?: string
+): Promise<GenerateApplicationResponse> {
+  const response = await api.post<GenerateApplicationResponse>(
+    "/api/generate-application",
+    {
+      session_id: sessionId,
+      ...(jobDescription && { job_description: jobDescription }),
+    }
+  );
   return response.data;
 }
 
@@ -269,27 +446,56 @@ export async function matchJobs(query: string): Promise<MatchResponse> {
   return response.data;
 }
 
-export async function interviewChat(sessionId: string, jobContext: string, userMessage: string = ""): Promise<InterviewResponse> {
-  const response = await api.post<InterviewResponse>("/api/interview/chat", { session_id: sessionId, user_message: userMessage, job_context: jobContext });
+export async function interviewChat(
+  sessionId: string,
+  jobContext: string,
+  userMessage: string = ""
+): Promise<InterviewResponse> {
+  const response = await api.post<InterviewResponse>("/api/interview/chat", {
+    session_id: sessionId,
+    user_message: userMessage,
+    job_context: jobContext,
+  });
   return response.data;
 }
 
-export async function generateKit(userName: string, jobTitle: string, jobCompany: string, sessionId?: string, jobDescription?: string): Promise<GenerateKitResponse | Blob> {
-  const response = await api.post("/api/generate-kit", { user_name: userName, job_title: jobTitle, job_company: jobCompany, session_id: sessionId, job_description: jobDescription });
+export async function generateKit(
+  userName: string,
+  jobTitle: string,
+  jobCompany: string,
+  sessionId?: string,
+  jobDescription?: string
+): Promise<GenerateKitResponse | Blob> {
+  const response = await api.post("/api/generate-kit", {
+    user_name: userName,
+    job_title: jobTitle,
+    job_company: jobCompany,
+    session_id: sessionId,
+    job_description: jobDescription,
+  });
   return response.data as GenerateKitResponse;
 }
 
-export async function analyze(userInput: string, context: Record<string, unknown> = {}): Promise<{ status: string; message: string; data: Record<string, unknown> }> {
-  const response = await api.post("/analyze", { user_input: userInput, context });
+export async function analyze(
+  userInput: string,
+  context: Record<string, unknown> = {}
+): Promise<{ status: string; message: string; data: Record<string, unknown> }> {
+  const response = await api.post("/analyze", {
+    user_input: userInput,
+    context,
+  });
   return response.data;
 }
 
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<ApiError>;
-    if (axiosError.response?.data?.detail) return axiosError.response.data.detail;
-    if (axiosError.response?.status === 404) return "Session not found. Please start a new session.";
-    if (axiosError.response?.status === 500) return "Server error. Please try again later.";
+    if (axiosError.response?.data?.detail)
+      return axiosError.response.data.detail;
+    if (axiosError.response?.status === 404)
+      return "Session not found. Please start a new session.";
+    if (axiosError.response?.status === 500)
+      return "Server error. Please try again later.";
     return axiosError.message;
   }
   if (error instanceof Error) return error.message;
@@ -334,4 +540,119 @@ export async function apiFetch<T = unknown>(
 
   return res.json();
 }
+
+// ============================================================================
+// Onboarding API Functions
+// ============================================================================
+
+/**
+ * Check if user needs to complete onboarding
+ */
+export async function getOnboardingStatus(): Promise<OnboardingStatusResponse> {
+  const response = await api.get<OnboardingStatusResponse>(
+    "/api/perception/onboarding/status"
+  );
+  return response.data;
+}
+
+/**
+ * Upload resume via perception API
+ */
+export async function uploadResumePerception(
+  file: File
+): Promise<ResumeUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await api.post<ResumeUploadResponse>(
+    "/api/perception/upload-resume",
+    formData,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+    }
+  );
+  return response.data;
+}
+
+/**
+ * Complete onboarding with profile data
+ */
+export async function completeOnboarding(
+  data: OnboardingCompleteRequest
+): Promise<{ status: string; message: string; next_step: string }> {
+  const response = await api.post("/api/perception/onboarding/complete", data);
+  return response.data;
+}
+
+/**
+ * Generate onboarding quiz questions
+ */
+export async function generateOnboardingQuiz(
+  skills?: string[],
+  targetRoles?: string[]
+): Promise<OnboardingQuizResponse> {
+  const response = await api.post<OnboardingQuizResponse>(
+    "/api/perception/onboarding/quiz/generate",
+    {
+      skills,
+      target_roles: targetRoles,
+    }
+  );
+  return response.data;
+}
+
+/**
+ * Submit onboarding quiz answers
+ */
+export async function submitOnboardingQuiz(
+  answers: QuizAnswer[]
+): Promise<QuizSubmitResponse> {
+  const response = await api.post<QuizSubmitResponse>(
+    "/api/perception/onboarding/quiz/submit",
+    {
+      answers,
+    }
+  );
+  return response.data;
+}
+
+/**
+ * Get dashboard insights
+ */
+export async function getDashboardInsights(): Promise<DashboardInsightsResponse> {
+  const response = await api.get<DashboardInsightsResponse>(
+    "/api/perception/dashboard"
+  );
+  return response.data;
+}
+
+/**
+ * Sync GitHub activity
+ */
+export async function syncGitHubPerception(): Promise<SyncGithubResponse> {
+  const response = await api.post<SyncGithubResponse>(
+    "/api/perception/sync-github"
+  );
+  return response.data;
+}
+
+/**
+ * Get user profile
+ */
+export async function getUserProfile(): Promise<{
+  status: string;
+  profile: UserProfile;
+}> {
+  const response = await api.get("/api/perception/profile");
+  return response.data;
+}
+
+export const checkWatchdogStatus = async (sessionId: string, lastSha?: string) => {
+  // Assuming 'api' is the name of your exported axios instance in this file
+  const response = await api.get("/api/perception/watchdog/check", {
+    params: { session_id: sessionId, last_sha: lastSha },
+  });
+  return response.data;
+};
+
 export default api;
