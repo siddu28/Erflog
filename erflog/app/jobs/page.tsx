@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/AuthContext";
+import * as api from "@/lib/api";
+import type { TodayDataItem } from "@/lib/api";
 import LiveStatusBadge from "@/components/LiveStatusBadge";
-import { useSession } from "@/lib/SessionContext";
-import type { StrategyJobMatch } from "@/lib/api";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, RefreshCw, ArrowLeft } from "lucide-react";
 
 interface RoadmapResource {
   name: string;
@@ -43,6 +44,9 @@ interface Job {
   company: string;
   description: string;
   link: string;
+  location?: string;
+  platform?: string;
+  source?: string;
   status: string;
   action: string;
   tier?: string;
@@ -52,43 +56,63 @@ interface Job {
 
 export default function JobsPage() {
   const router = useRouter();
-  const { profile, strategyJobs } = useSession();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Transform strategy jobs to Job format
-  const transformStrategyJobs = (results: StrategyJobMatch[]): Job[] => {
-    return results.map((result, index) => ({
-      id: result.id || String(index + 1),
-      score: result.score,
-      title: result.title,
-      company: result.company,
-      description: result.description,
-      link: result.link,
-      status: result.status || "Gap Detected",
-      action: result.action || "Start Roadmap",
-      tier: result.tier,
-      ui_color: result.ui_color,
-      roadmap_details: result.roadmap_details
-        ? {
-            missing_skills: result.roadmap_details.missing_skills || [],
-            graph: result.roadmap_details.graph || { nodes: [], edges: [] },
-            resources: result.roadmap_details.resources || {},
-          }
-        : null,
-    }));
-  };
-
-  // Load from strategy jobs on mount
+  // Fetch jobs from Agent 3 API
   useEffect(() => {
-    if (strategyJobs.length > 0) {
-      const transformed = transformStrategyJobs(strategyJobs);
-      setJobs(transformed);
-      setFilteredJobs(transformed);
+    const fetchJobs = async () => {
+      if (!isAuthenticated) return;
+
+      try {
+        setIsLoading(true);
+        const data = await api.getTodayJobs();
+        const transformed = (data.jobs || []).map((job: TodayDataItem, index: number) => ({
+          id: job.id || String(index + 1),
+          score: job.score,
+          title: job.title,
+          company: job.company,
+          description: job.summary || "No description available",
+          link: job.link,
+          location: job.location,
+          platform: job.platform,
+          source: job.source,
+          status: job.score >= 0.85 ? "Ready" : job.score >= 0.4 ? "Gap Detected" : "Low Match",
+          action: job.score >= 0.85 ? "Apply Now" : "View Roadmap",
+          tier: job.score >= 0.85 ? "A" : job.score >= 0.4 ? "B" : "C",
+          roadmap_details: null,
+        }));
+        setJobs(transformed);
+        setFilteredJobs(transformed);
+      } catch (err) {
+        console.error("Failed to fetch jobs:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (!authLoading) {
+      if (!isAuthenticated) {
+        router.push("/login");
+      } else {
+        fetchJobs();
+      }
     }
-  }, [strategyJobs]);
+  }, [isAuthenticated, authLoading, router]);
+
+  // Filter jobs based on search query
+  useEffect(() => {
+    const filtered = jobs.filter((job) =>
+      job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      job.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      job.description.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    setFilteredJobs(filtered);
+  }, [searchQuery, jobs]);
 
   const toggleJobExpand = (id: string) => {
     setExpandedJobId(expandedJobId === id ? null : id);
@@ -97,6 +121,18 @@ export default function JobsPage() {
   const getMatchPercentage = (score: number) => {
     return Math.round(score * 100);
   };
+
+  // Loading state
+  if (authLoading || isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F7F5F0]">
+        <div className="text-center">
+          <Loader2 className="w-10 h-10 animate-spin text-[#D95D39] mx-auto mb-4" />
+          <p className="text-gray-600">Loading jobs...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-canvas py-12 px-8">
