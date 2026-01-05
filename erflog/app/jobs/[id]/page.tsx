@@ -202,7 +202,7 @@ export default function JobDetailPage() {
         {/* --- ROADMAP SECTION --- */}
         {job.roadmap_details && job.roadmap_details.graph ? (
           <div className="bg-surface rounded-xl border border-[#E5E0D8] p-6 mb-6">
-            <Roadmap data={job.roadmap_details as RoadmapDetails} savedJobId={savedJobId || undefined} />
+            <Roadmap data={job.roadmap_details as RoadmapDetails} savedJobId={savedJobId || undefined} userId={user?.id} />
           </div>
         ) : matchPercentage >= 80 ? (
           <div className="bg-green-50 rounded-xl border border-green-200 p-6 mb-6 text-center">

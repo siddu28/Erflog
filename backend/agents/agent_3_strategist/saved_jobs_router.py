@@ -485,3 +485,138 @@ async def delete_global_roadmap(roadmap_id: str):
     supabase.table("global_roadmaps").delete().eq("id", roadmap_id).execute()
     
     return {"status": "success", "message": "Roadmap deleted"}
+
+
+# =============================================================================
+# Roadmap Completion & Skills Update
+# =============================================================================
+
+class CompleteRoadmapRequest(BaseModel):
+    user_id: str
+    saved_job_id: str
+
+@router.post("/complete-roadmap")
+async def complete_roadmap_and_update_skills(request: CompleteRoadmapRequest):
+    """
+    Called when a user completes 100% of a roadmap.
+    Uses LLM to analyze the roadmap and extract skills learned,
+    then adds those skills to the user's profile.
+    """
+    print(f"[CompleteRoadmap] Starting for user {request.user_id}, job {request.saved_job_id}")
+    
+    supabase = get_supabase()
+    llm = get_llm()
+    
+    # 1. Get the saved job with roadmap details
+    saved_job_result = supabase.table("saved_jobs").select("*").eq("id", request.saved_job_id).execute()
+    print(f"[CompleteRoadmap] Saved job result: {len(saved_job_result.data) if saved_job_result.data else 0} records")
+    
+    if not saved_job_result.data:
+        print(f"[CompleteRoadmap] ERROR: Saved job not found")
+        raise HTTPException(status_code=404, detail="Saved job not found")
+    
+    saved_job = saved_job_result.data[0]
+    roadmap_details = saved_job.get("roadmap_details", {})
+    print(f"[CompleteRoadmap] Roadmap details exists: {bool(roadmap_details)}")
+    
+    if not roadmap_details:
+        print(f"[CompleteRoadmap] ERROR: No roadmap found")
+        raise HTTPException(status_code=400, detail="No roadmap found for this job")
+    
+    # 2. Get user's current skills from profiles table
+    # Use service role to bypass RLS
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+    supabase_url = os.getenv("SUPABASE_URL")
+    service_supabase = create_client(supabase_url, service_key)
+    
+    profile_result = service_supabase.table("profiles").select("*").eq("user_id", request.user_id).execute()
+    print(f"[CompleteRoadmap] Profile result: {len(profile_result.data) if profile_result.data else 0} records")
+    
+    if not profile_result.data:
+        # If no profile found, create one with skills from roadmap
+        print(f"[CompleteRoadmap] No profile found, will extract skills from roadmap only")
+        current_skills = []
+    else:
+        current_skills = profile_result.data[0].get("skills", []) or []
+    print(f"[CompleteRoadmap] Current skills: {current_skills}")
+    
+    # 3. Use LLM to extract new skills from the completed roadmap
+    print(f"[CompleteRoadmap] Preparing LLM call...")
+    roadmap_text = json.dumps(roadmap_details, indent=2)
+    current_skills_text = ", ".join(current_skills) if current_skills else "No existing skills"
+    
+    prompt = f"""You are a career skills analyzer. A user has completed a learning roadmap.
+
+COMPLETED ROADMAP:
+{roadmap_text}
+
+USER'S CURRENT SKILLS:
+{current_skills_text}
+
+Based on the completed roadmap, identify the NEW skills the user has learned.
+Only include skills that are NOT already in the user's current skills list.
+Be specific and technical (e.g., "React.js", "Docker", "REST APIs", "PostgreSQL").
+
+Return ONLY a JSON array of new skill strings. No explanations, no markdown.
+Example: ["React.js", "TypeScript", "REST APIs"]
+
+If no new skills were learned (all already exist), return an empty array: []
+"""
+
+    try:
+        print(f"[CompleteRoadmap] Calling Gemini LLM...")
+        response = llm.generate_content(prompt)
+        response_text = response.text.strip()
+        print(f"[CompleteRoadmap] LLM raw response: {response_text[:200]}...")
+        
+        # Clean markdown if present
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+        response_text = response_text.strip()
+        
+        new_skills = json.loads(response_text)
+        print(f"[CompleteRoadmap] Parsed new skills: {new_skills}")
+        
+        if not isinstance(new_skills, list):
+            new_skills = []
+            
+    except Exception as e:
+        print(f"[CompleteRoadmap] LLM Error: {e}")
+        # Fallback: extract missing_skills from roadmap
+        new_skills = roadmap_details.get("missing_skills", [])
+        print(f"[CompleteRoadmap] Using fallback skills: {new_skills}")
+    
+    # 4. Filter out skills that already exist (case-insensitive)
+    current_skills_lower = [s.lower() for s in current_skills]
+    skills_to_add = [s for s in new_skills if s.lower() not in current_skills_lower]
+    print(f"[CompleteRoadmap] Skills to add (after filtering): {skills_to_add}")
+    
+    if not skills_to_add:
+        print(f"[CompleteRoadmap] No new skills to add, returning early")
+        return {
+            "status": "success",
+            "message": "Roadmap completed! All skills already in your profile.",
+            "new_skills_added": [],
+            "total_skills": len(current_skills)
+        }
+    
+    # 5. Update the user's profile with new skills (use service client to bypass RLS)
+    updated_skills = current_skills + skills_to_add
+    print(f"[CompleteRoadmap] Updating profile with {len(skills_to_add)} new skills...")
+    
+    update_result = service_supabase.table("profiles").update({
+        "skills": updated_skills
+    }).eq("user_id", request.user_id).execute()
+    print(f"[CompleteRoadmap] Profile update result: {update_result.data}")
+    
+    print(f"[CompleteRoadmap] SUCCESS! Added {len(skills_to_add)} skills: {skills_to_add}")
+    
+    return {
+        "status": "success",
+        "message": f"🎉 Congratulations! {len(skills_to_add)} new skills added to your profile!",
+        "new_skills_added": skills_to_add,
+        "total_skills": len(updated_skills)
+    }
+

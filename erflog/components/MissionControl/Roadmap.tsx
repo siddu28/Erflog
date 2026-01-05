@@ -2,25 +2,30 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { BookOpen, Circle, ArrowRight, AlertCircle, Download, CheckCircle, Trophy, Sparkles, Target } from 'lucide-react';
-import { RoadmapDetails, getProgress, updateProgress } from '@/lib/api';
+import { RoadmapDetails, getProgress, updateProgress, completeRoadmap } from '@/lib/api';
 import { useEffect, useRef, useState, useCallback } from 'react';
 
 interface RoadmapProps {
   data: RoadmapDetails | null;
   savedJobId?: string; // Optional: If provided, progress will be persisted to backend
+  userId?: string; // Required for completing roadmap and updating skills
 }
 
 interface CompletionState {
   [nodeId: string]: boolean;
 }
 
-export default function Roadmap({ data, savedJobId }: RoadmapProps) {
+export default function Roadmap({ data, savedJobId, userId }: RoadmapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const roadmapRef = useRef<HTMLDivElement>(null);
   const [completedNodes, setCompletedNodes] = useState<CompletionState>({});
   const [showCelebration, setShowCelebration] = useState(false);
   const [celebrationMessage, setCelebrationMessage] = useState('');
   const [isLoadingProgress, setIsLoadingProgress] = useState(false);
+  const [hasTriggeredCompletion, setHasTriggeredCompletion] = useState(false);
+  const [skillAnalysisComplete, setSkillAnalysisComplete] = useState(false);
+  const [newSkillsAdded, setNewSkillsAdded] = useState<string[]>([]);
+  const [skillUpdateMessage, setSkillUpdateMessage] = useState('');
 
   // Load progress from backend when component mounts (if savedJobId is provided)
   useEffect(() => {
@@ -36,6 +41,13 @@ export default function Roadmap({ data, savedJobId }: RoadmapProps) {
             });
           }
           setCompletedNodes(loadedProgress);
+          
+          // Check if already 100% completed
+          const totalNodes = data?.graph?.nodes?.length || 0;
+          const completedCount = Object.values(loadedProgress).filter(Boolean).length;
+          if (totalNodes > 0 && completedCount === totalNodes) {
+            setHasTriggeredCompletion(true); // Already completed before
+          }
         })
         .catch((err) => {
           console.error('Failed to load progress:', err);
@@ -44,12 +56,55 @@ export default function Roadmap({ data, savedJobId }: RoadmapProps) {
           setIsLoadingProgress(false);
         });
     }
-  }, [savedJobId]);
+  }, [savedJobId, data?.graph?.nodes?.length]);
 
   // Calculate completion percentage
   const totalNodes = data?.graph?.nodes?.length || 0;
   const completedCount = Object.values(completedNodes).filter(Boolean).length;
   const completionPercentage = totalNodes > 0 ? Math.round((completedCount / totalNodes) * 100) : 0;
+
+  // Trigger skill update when 100% is reached
+  useEffect(() => {
+    console.log('[Roadmap] Completion check:', { 
+      completionPercentage, 
+      hasTriggeredCompletion, 
+      savedJobId, 
+      userId, 
+      totalNodes 
+    });
+    
+    if (
+      completionPercentage === 100 &&
+      !hasTriggeredCompletion &&
+      savedJobId &&
+      userId &&
+      totalNodes > 0
+    ) {
+      console.log('[Roadmap] 🎯 Triggering skill update API call...');
+      setHasTriggeredCompletion(true);
+      
+      // Call the backend to analyze roadmap and update skills
+      completeRoadmap(userId, savedJobId)
+        .then((response) => {
+          console.log('[Roadmap] ✅ Skills updated:', response);
+          setSkillAnalysisComplete(true);
+          setSkillUpdateMessage(response.message);
+          if (response.new_skills_added && response.new_skills_added.length > 0) {
+            setNewSkillsAdded(response.new_skills_added);
+            setCelebrationMessage(`🎓 ${response.message}`);
+            setShowCelebration(true);
+            setTimeout(() => setShowCelebration(false), 5000);
+          } else {
+            console.log('[Roadmap] No new skills to add (already have them all)');
+          }
+        })
+        .catch((err) => {
+          console.error('[Roadmap] ❌ Failed to update skills:', err);
+          setSkillAnalysisComplete(true);
+          setSkillUpdateMessage('Failed to analyze skills. Please try again.');
+        });
+    }
+  }, [completionPercentage, hasTriggeredCompletion, savedJobId, userId, totalNodes]);
 
   const handleNodeComplete = useCallback(async (nodeId: string, nodeLabel: string) => {
     const wasCompleted = completedNodes[nodeId];
@@ -530,11 +585,26 @@ export default function Roadmap({ data, savedJobId }: RoadmapProps) {
             initial={{ opacity: 0, scale: 0.8, y: -20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.8, y: -20 }}
-            className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 bg-gradient-to-r from-orange-400 to-orange-500 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3"
+            className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 bg-gradient-to-r from-orange-400 to-orange-500 text-white px-6 py-4 rounded-xl shadow-2xl"
           >
-            <Trophy className="w-6 h-6 animate-bounce" />
-            <span className="font-bold text-lg">{celebrationMessage}</span>
-            <Sparkles className="w-5 h-5 animate-spin" />
+            <div className="flex items-center gap-3">
+              <Trophy className="w-6 h-6 animate-bounce" />
+              <span className="font-bold text-lg">{celebrationMessage}</span>
+              <Sparkles className="w-5 h-5 animate-spin" />
+            </div>
+            {/* Show new skills added */}
+            {newSkillsAdded.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-white/30">
+                <p className="text-sm text-white/90 mb-2">New skills added to your profile:</p>
+                <div className="flex flex-wrap gap-2">
+                  {newSkillsAdded.map((skill, idx) => (
+                    <span key={idx} className="px-2 py-1 bg-white/20 rounded-full text-xs font-medium">
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -681,6 +751,40 @@ export default function Roadmap({ data, savedJobId }: RoadmapProps) {
             <Trophy className="w-12 h-12 text-orange-500 mx-auto mb-3 animate-bounce" />
             <h3 className="text-2xl font-bold text-gray-800 mb-2">🎉 Roadmap Completed! 🎉</h3>
             <p className="text-orange-700">Amazing work! You've completed all the learning objectives. Ready to apply?</p>
+            
+            {/* Show new skills added to profile */}
+            {newSkillsAdded.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-orange-300">
+                <p className="text-green-700 font-semibold mb-2">
+                  🎓 {newSkillsAdded.length} new skill{newSkillsAdded.length > 1 ? 's' : ''} added to your profile!
+                </p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {newSkillsAdded.map((skill, idx) => (
+                    <span key={idx} className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium border border-green-300">
+                      ✓ {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Show loading state while updating skills */}
+            {hasTriggeredCompletion && !skillAnalysisComplete && savedJobId && userId && (
+              <div className="mt-4 pt-4 border-t border-orange-300">
+                <p className="text-orange-600 text-sm">
+                  ⏳ Analyzing your learned skills...
+                </p>
+              </div>
+            )}
+            
+            {/* Show message when analysis complete but no new skills */}
+            {skillAnalysisComplete && newSkillsAdded.length === 0 && skillUpdateMessage && (
+              <div className="mt-4 pt-4 border-t border-orange-300">
+                <p className="text-green-600 text-sm">
+                  ✅ {skillUpdateMessage}
+                </p>
+              </div>
+            )}
           </motion.div>
         )}
       </div>

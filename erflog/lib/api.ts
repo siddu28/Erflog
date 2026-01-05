@@ -1046,4 +1046,35 @@ export async function getProgress(jobId: string): Promise<ProgressResponse> {
   return response.data;
 }
 
+// =============================================================================
+// Roadmap Completion & Skills Update
+// =============================================================================
+
+export interface CompleteRoadmapResponse {
+  status: string;
+  message: string;
+  new_skills_added: string[];
+  total_skills: number;
+}
+
+/**
+ * Called when user completes 100% of a roadmap.
+ * Analyzes the roadmap and adds learned skills to user's profile.
+ */
+export async function completeRoadmap(userId: string, savedJobId: string): Promise<CompleteRoadmapResponse> {
+  console.log('[API] completeRoadmap called with:', { userId, savedJobId });
+  try {
+    const response = await api.post<CompleteRoadmapResponse>('/api/saved-jobs/complete-roadmap', {
+      user_id: userId,
+      saved_job_id: savedJobId
+    });
+    console.log('[API] completeRoadmap response:', response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error('[API] completeRoadmap error:', error?.response?.data || error?.message || error);
+    throw error;
+  }
+}
+
 export default api;
+
