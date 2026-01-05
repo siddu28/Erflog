@@ -343,7 +343,7 @@ def structure_resume_content(raw_text: str, job_description: str, preserved_cont
     print(f"🧠 [Agent 4] Structuring and Optimizing content with Gemini...")
     
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash-exp", 
+        model="gemini-2.0-flash", 
         google_api_key=os.getenv("GEMINI_API_KEY"),
         temperature=0.2
     )

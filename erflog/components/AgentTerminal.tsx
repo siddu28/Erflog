@@ -228,7 +228,7 @@ export default function AgentTerminal({
           <AnimatePresence>
             {visibleLogs.map((log, index) => (
               <LogLine
-                key={log.id}
+                key={`${log.id}-${index}`}
                 log={log}
                 isTyping={isTypingCurrent && index === visibleLogs.length - 1}
                 onTypingComplete={handleTypingComplete}

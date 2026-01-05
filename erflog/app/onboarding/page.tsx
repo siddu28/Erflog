@@ -140,7 +140,7 @@ function EducationEntry({
       <div className="grid grid-cols-2 gap-3">
         <input
           type="text"
-          value={education.institution}
+          value={education.institution || ""}
           onChange={(e) =>
             onChange({ ...education, institution: e.target.value })
           }
@@ -149,7 +149,7 @@ function EducationEntry({
         />
         <input
           type="text"
-          value={education.degree}
+          value={education.degree || ""}
           onChange={(e) => onChange({ ...education, degree: e.target.value })}
           placeholder="Degree (e.g., B.Tech)"
           className="px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#D95D39]/20 focus:border-[#D95D39]"
@@ -898,13 +898,18 @@ export default function OnboardingPage() {
                       GitHub Profile
                     </span>
                   </label>
-                  <input
-                    type="url"
-                    value={githubUrl}
-                    onChange={(e) => setGithubUrl(e.target.value)}
-                    placeholder="https://github.com/username"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#D95D39]/20 focus:border-[#D95D39]"
-                  />
+                  <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-[#D95D39]/20 focus-within:border-[#D95D39]">
+                    <span className="px-4 py-3 bg-gray-50 text-gray-600 font-medium text-sm whitespace-nowrap border-r border-gray-200">
+                      https://github.com/
+                    </span>
+                    <input
+                      type="text"
+                      value={githubUrl}
+                      onChange={(e) => setGithubUrl(e.target.value)}
+                      placeholder="username"
+                      className="flex-1 px-4 py-3 border-none focus:outline-none"
+                    />
+                  </div>
                   <p className="text-xs text-gray-500 mt-2">
                     We&apos;ll monitor your commits to track skill development
                   </p>
@@ -918,13 +923,18 @@ export default function OnboardingPage() {
                       LinkedIn Profile
                     </span>
                   </label>
-                  <input
-                    type="url"
-                    value={linkedinUrl}
-                    onChange={(e) => setLinkedinUrl(e.target.value)}
-                    placeholder="https://linkedin.com/in/username"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#D95D39]/20 focus:border-[#D95D39]"
-                  />
+                  <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-[#D95D39]/20 focus-within:border-[#D95D39]">
+                    <span className="px-4 py-3 bg-gray-50 text-gray-600 font-medium text-sm whitespace-nowrap border-r border-gray-200">
+                      https://linkedin.com/in/
+                    </span>
+                    <input
+                      type="text"
+                      value={linkedinUrl}
+                      onChange={(e) => setLinkedinUrl(e.target.value)}
+                      placeholder="username"
+                      className="flex-1 px-4 py-3 border-none focus:outline-none"
+                    />
+                  </div>
                 </div>
 
                 {/* Info Card */}
