@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/AuthContext";
 import * as api from "@/lib/api";
 import type { TodayDataItem } from "@/lib/api";
 import LiveStatusBadge from "@/components/LiveStatusBadge";
-import { Search, Loader2, RefreshCw, ArrowLeft } from "lucide-react";
+import { Search, Loader2, RefreshCw, ArrowLeft, Mic, MessageSquare, X } from "lucide-react";
 
 interface RoadmapResource {
   name: string;
@@ -75,6 +75,9 @@ export default function JobsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [interviewModal, setInterviewModal] = useState<{ open: boolean; jobId: string; jobTitle: string }>(
+    { open: false, jobId: "", jobTitle: "" }
+  );
 
   // Fetch jobs from Agent 3 API
   useEffect(() => {
@@ -351,12 +354,29 @@ export default function JobsPage() {
                     className="p-6 border-t bg-gray-50"
                     style={{ borderColor: "#E5E0D8" }}
                   >
+                    <div className="flex gap-3 mb-3">
+                      <button
+                        onClick={() => router.push(`/jobs/${job.id}`)}
+                        className="flex-1 py-3 rounded-lg font-medium border-2 transition-all hover:bg-gray-100"
+                        style={{ borderColor: "#E5E0D8" }}
+                      >
+                        View Roadmap
+                      </button>
+                      <button
+                        onClick={() => router.push(`/jobs/${job.id}/apply`)}
+                        className="flex-1 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90"
+                        style={{ backgroundColor: "#D95D39" }}
+                      >
+                        Apply
+                      </button>
+                    </div>
                     <button
-                      onClick={() => router.push(`/jobs/${job.id}/apply`)}
-                      className="w-full py-4 rounded-lg font-medium text-white transition-all hover:opacity-90"
-                      style={{ backgroundColor: "#D95D39" }}
+                      onClick={() => setInterviewModal({ open: true, jobId: job.id, jobTitle: job.title })}
+                      className="w-full py-3 rounded-lg font-medium border-2 transition-all hover:bg-[#D95D39]/5 flex items-center justify-center gap-2"
+                      style={{ borderColor: "#D95D39", color: "#D95D39" }}
                     >
-                      Apply Now
+                      <Mic size={18} />
+                      Mock Interview
                     </button>
                   </div>
                 </div>
@@ -392,6 +412,70 @@ export default function JobsPage() {
           </div>
         )}
       </div>
+
+      {/* Interview Mode Selection Modal */}
+      {interviewModal.open && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => setInterviewModal({ open: false, jobId: "", jobTitle: "" })}
+        >
+          <div 
+            className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setInterviewModal({ open: false, jobId: "", jobTitle: "" })}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X size={24} />
+            </button>
+
+            <h2 className="text-2xl font-bold text-gray-900 mb-2 text-center">
+              Choose Interview Mode
+            </h2>
+            <p className="text-gray-600 text-center mb-6">
+              How would you like to practice for <span className="font-medium">{interviewModal.jobTitle}</span>?
+            </p>
+
+            <div className="flex flex-col gap-4">
+              {/* Voice Option */}
+              <button
+                onClick={() => {
+                  setInterviewModal({ open: false, jobId: "", jobTitle: "" });
+                  router.push(`/interview/voice?jobId=${interviewModal.jobId}`);
+                }}
+                className="flex items-center gap-4 p-5 rounded-xl border-2 border-gray-200 hover:border-[#D95D39] hover:bg-[#D95D39]/5 transition-all group"
+              >
+                <div className="w-14 h-14 rounded-full bg-[#D95D39]/10 flex items-center justify-center group-hover:bg-[#D95D39]/20 transition-colors">
+                  <Mic size={28} className="text-[#D95D39]" />
+                </div>
+                <div className="text-left">
+                  <h3 className="font-semibold text-lg text-gray-900">Voice Interview</h3>
+                  <p className="text-sm text-gray-500">Practice with speech-to-text AI interviewer</p>
+                </div>
+              </button>
+
+              {/* Chat Option */}
+              <button
+                onClick={() => {
+                  setInterviewModal({ open: false, jobId: "", jobTitle: "" });
+                  router.push(`/interview/text?jobId=${interviewModal.jobId}`);
+                }}
+                className="flex items-center gap-4 p-5 rounded-xl border-2 border-gray-200 hover:border-[#D95D39] hover:bg-[#D95D39]/5 transition-all group"
+              >
+                <div className="w-14 h-14 rounded-full bg-[#D95D39]/10 flex items-center justify-center group-hover:bg-[#D95D39]/20 transition-colors">
+                  <MessageSquare size={28} className="text-[#D95D39]" />
+                </div>
+                <div className="text-left">
+                  <h3 className="font-semibold text-lg text-gray-900">Chat Interview</h3>
+                  <p className="text-sm text-gray-500">Text-based interview with AI</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
