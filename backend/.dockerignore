@@ -11,8 +11,9 @@ build/
 # Environment & Credentials
 .env
 .env.*
-credential.json
-backend/credential.json
+# NOTE: credential.json is ALLOWED for Cloud Run deployment
+# credential.json  # COMMENTED OUT - needed in Docker for Cloud Run
+# backend/credential.json
 *.json.credentials
 
 # Testing & Coverage
