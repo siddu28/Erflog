@@ -339,41 +339,72 @@ Return JSON only:
     response = get_llm().invoke(messages[-8:] + [HumanMessage(content=prompt)])
     try:
         feedback = json.loads(response.content.replace("```json", "").replace("```", "").strip())
+        # Add interview type to feedback for display purposes
+        feedback["interview_type"] = interview_type
     except:
-        feedback = {"score": 0, "verdict": "Error", "summary": "Failed to parse evaluation"}
+        feedback = {"score": 0, "verdict": "Error", "summary": "Failed to parse evaluation", "interview_type": interview_type}
     
     # Save to database
     try:
         if user_id:
+            print(f"{log_prefix} Attempting to save to database for user_id: {user_id}")
             chat_history = [{"role": m.type, "content": m.content} for m in messages]
             
+            # Parse job_id - required field in database
             job_id_int = None
             if job_id:
                 try:
                     job_id_int = int(float(job_id))
+                    print(f"{log_prefix} Parsed job_id: {job_id_int}")
                 except (ValueError, TypeError):
-                    print(f"⚠️ [DB] Invalid job_id: {job_id}")
+                    print(f"⚠️ [DB] Invalid job_id format: {job_id}")
             
-            insert_data = {
-                "user_id": user_id,
-                "chat_history": json.dumps(chat_history),
-                "feedback_report": json.dumps(feedback),
-                "interview_type": interview_type,
-                "created_at": datetime.datetime.now().isoformat()
-            }
+            # job_id is required (NOT NULL in schema) - get first valid job if not provided
+            if job_id_int is None:
+                print(f"⚠️ {log_prefix} No valid job_id provided - querying for first available job")
+                try:
+                    jobs_result = db_manager.get_client().table("jobs").select("id").limit(1).execute()
+                    if jobs_result.data and len(jobs_result.data) > 0:
+                        job_id_int = jobs_result.data[0]["id"]
+                        print(f"{log_prefix} Using first available job_id: {job_id_int}")
+                    else:
+                        print(f"⚠️ {log_prefix} No jobs in database - cannot save interview")
+                except Exception as job_query_error:
+                    print(f"⚠️ {log_prefix} Failed to query jobs: {job_query_error}")
             
-            if job_id_int is not None:
-                insert_data["job_id"] = job_id_int
-            
-            try:
-                db_manager.get_client().table("interviews").insert(insert_data).execute()
-                print(f"✅ [DB] Saved {interview_type} interview for User {user_id}")
-            except Exception as db_error:
-                if "23503" in str(db_error) and job_id_int is not None:
-                    insert_data.pop("job_id", None)
-                    db_manager.get_client().table("interviews").insert(insert_data).execute()
-                else:
-                    raise
+            if job_id_int is None:
+                print(f"⚠️ {log_prefix} No valid job_id available - skipping database save")
+            else:
+                insert_data = {
+                    "user_id": user_id,
+                    "job_id": job_id_int,
+                    "chat_history": chat_history,  # Already a list, Supabase handles JSONB
+                    "feedback_report": feedback,   # Already a dict, Supabase handles JSONB
+                }
+                
+                print(f"{log_prefix} Insert data prepared: user_id={user_id[:8]}..., job_id={job_id_int}")
+                
+                try:
+                    result = db_manager.get_client().table("interviews").insert(insert_data).execute()
+                    print(f"✅ [DB] Saved {interview_type} interview for User {user_id[:8]}... - Rows: {len(result.data) if result.data else 0}")
+                except Exception as db_error:
+                    error_str = str(db_error)
+                    print(f"⚠️ [DB] Insert error: {error_str}")
+                    
+                    # If foreign key constraint fails, query for a valid job
+                    if "23503" in error_str and "job_id" in error_str:
+                        print(f"⚠️ [DB] Job {job_id_int} doesn't exist. Querying for valid job...")
+                        jobs_result = db_manager.get_client().table("jobs").select("id").limit(1).execute()
+                        if jobs_result.data and len(jobs_result.data) > 0:
+                            insert_data["job_id"] = jobs_result.data[0]["id"]
+                            result = db_manager.get_client().table("interviews").insert(insert_data).execute()
+                            print(f"✅ [DB] Saved with job_id={insert_data['job_id']} - Rows: {len(result.data) if result.data else 0}")
+                        else:
+                            print(f"⚠️ [DB] No jobs found in database - cannot save interview")
+                    else:
+                        raise
+        else:
+            print(f"⚠️ {log_prefix} No user_id provided - skipping database save")
     except Exception as e:
         print(f"❌ [DB] Save Error: {e}")
         import traceback
@@ -393,6 +424,12 @@ def _build_graph(checkpointer):
     workflow.add_edge("evaluate", END)
     
     return workflow.compile(checkpointer=checkpointer, interrupt_after=["interviewer"])
+
+# Separate evaluation function to call directly when interview ends
+def run_evaluation(state: dict) -> dict:
+    """Directly run evaluation without going through the graph.
+    This bypasses the interrupt_after issue."""
+    return evaluate_node(state)
 
 chat_interview_graph = _build_graph(chat_checkpointer)
 voice_interview_graph = _build_graph(voice_checkpointer)
