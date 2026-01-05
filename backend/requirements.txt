@@ -29,3 +29,10 @@ google-cloud-texttospeech==2.17.2
 websockets>=13.0
 PyMuPDF==1.24.14
 requests==2.31.0
+browser-use
+langchain-anthropic
+langchain-openai
+MainContentExtractor
+Selenium-Screenshot
+webdriver-manager
+playwright
