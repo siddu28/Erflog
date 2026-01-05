@@ -802,6 +802,7 @@ class PerceptionService:
         experience_summary: Optional[str] = None,
         github_url: Optional[str] = None,
         linkedin_url: Optional[str] = None,
+        leetcode_url: Optional[str] = None,
         has_resume: bool = False
     ) -> Dict[str, Any]:
         """
@@ -842,6 +843,7 @@ class PerceptionService:
             "experience_summary": experience_summary or "",
             "github_url": github_url,
             "linkedin_url": linkedin_url,
+            "leetcode_url": leetcode_url,
             "onboarding_completed": False,  # Will be True after quiz
             "updated_at": now
         }
