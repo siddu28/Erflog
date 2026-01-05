@@ -59,6 +59,12 @@ async def get_today_data(user: dict = Depends(get_current_user)):
 async def get_today_jobs(user: dict = Depends(get_current_user)):
     """
     Get all 10 matched jobs for the current user.
+    Each job includes:
+    - Basic info (title, company, score, etc.)
+    - roadmap: Learning roadmap (only for jobs with match < 80%)
+    - application_text: Pre-generated application text
+    - needs_improvement: Boolean indicating if roadmap was generated
+    
     Used by the Jobs page.
     """
     user_id = user.get("sub")
@@ -80,7 +86,103 @@ async def get_today_jobs(user: dict = Depends(get_current_user)):
     return {
         "status": "success",
         "jobs": jobs,
-        "count": len(jobs)
+        "count": len(jobs),
+        "stats": {
+            "high_match": sum(1 for j in jobs if not j.get("needs_improvement")),
+            "needs_improvement": sum(1 for j in jobs if j.get("needs_improvement")),
+            "with_roadmap": sum(1 for j in jobs if j.get("roadmap"))
+        }
+    }
+
+
+@router.get("/jobs/{job_id}/roadmap")
+async def get_job_roadmap(job_id: str, user: dict = Depends(get_current_user)):
+    """
+    Get the learning roadmap for a specific job.
+    Returns the roadmap graph with nodes, edges, and resources.
+    
+    Only available for jobs with match < 80%.
+    """
+    user_id = user.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User ID not found")
+    
+    service = get_strategist_service()
+    data = service.get_user_today_data(user_id)
+    
+    if not data:
+        raise HTTPException(status_code=404, detail="No data found. Please refresh first.")
+    
+    jobs = data["data"].get("jobs", [])
+    
+    # Find the job
+    job = next((j for j in jobs if str(j.get("id")) == str(job_id)), None)
+    
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    
+    roadmap = job.get("roadmap")
+    
+    if not roadmap:
+        return {
+            "status": "success",
+            "message": "No roadmap needed - high match (>= 80%)",
+            "job": {
+                "id": job.get("id"),
+                "title": job.get("title"),
+                "company": job.get("company"),
+                "score": job.get("score")
+            },
+            "roadmap": None
+        }
+    
+    return {
+        "status": "success",
+        "job": {
+            "id": job.get("id"),
+            "title": job.get("title"),
+            "company": job.get("company"),
+            "score": job.get("score")
+        },
+        "roadmap": roadmap
+    }
+
+
+@router.get("/jobs/{job_id}/application")
+async def get_job_application_text(job_id: str, user: dict = Depends(get_current_user)):
+    """
+    Get pre-generated application text for a specific job.
+    Returns copy-paste ready responses for common application questions.
+    """
+    user_id = user.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User ID not found")
+    
+    service = get_strategist_service()
+    data = service.get_user_today_data(user_id)
+    
+    if not data:
+        raise HTTPException(status_code=404, detail="No data found. Please refresh first.")
+    
+    jobs = data["data"].get("jobs", [])
+    
+    # Find the job
+    job = next((j for j in jobs if str(j.get("id")) == str(job_id)), None)
+    
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    
+    application_text = job.get("application_text", {})
+    
+    return {
+        "status": "success",
+        "job": {
+            "id": job.get("id"),
+            "title": job.get("title"),
+            "company": job.get("company"),
+            "score": job.get("score")
+        },
+        "application_text": application_text
     }
 
 

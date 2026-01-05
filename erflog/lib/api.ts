@@ -647,7 +647,10 @@ export async function getUserProfile(): Promise<{
   return response.data;
 }
 
-export const checkWatchdogStatus = async (sessionId: string, lastSha?: string) => {
+export const checkWatchdogStatus = async (
+  sessionId: string,
+  lastSha?: string
+) => {
   // Assuming 'api' is the name of your exported axios instance in this file
   const response = await api.get("/api/perception/watchdog/check", {
     params: { session_id: sessionId, last_sha: lastSha },
@@ -658,6 +661,49 @@ export const checkWatchdogStatus = async (sessionId: string, lastSha?: string) =
 // ============================================================================
 // Agent 3: Strategist API Types & Functions
 // ============================================================================
+
+// Roadmap Types (from Agent 3 Orchestrator)
+export interface RoadmapNode {
+  id: string;
+  label: string;
+  day: number;
+  type: "concept" | "practice" | "project";
+  description: string;
+}
+
+export interface RoadmapEdge {
+  source: string;
+  target: string;
+}
+
+export interface RoadmapResource {
+  name: string;
+  url: string;
+}
+
+export interface RoadmapData {
+  missing_skills: string[];
+  match_percentage: number;
+  graph: {
+    nodes: RoadmapNode[];
+    edges: RoadmapEdge[];
+  };
+  resources: Record<string, RoadmapResource[]>;
+  estimated_hours: number;
+  focus_areas: string[];
+}
+
+// Application Text Types (from Agent 4)
+export interface ApplicationText {
+  why_this_company: string;
+  why_this_role: string;
+  short_intro: string;
+  cover_letter_opening: string;
+  cover_letter_body: string;
+  cover_letter_closing: string;
+  key_achievements: string[];
+  questions_for_interviewer: string[];
+}
 
 export interface TodayDataItem {
   id: string;
@@ -671,6 +717,11 @@ export interface TodayDataItem {
   location: string;
   type: string;
   supabase_id?: number;
+  // New fields from orchestrator
+  roadmap?: RoadmapData | null;
+  application_text?: ApplicationText | null;
+  needs_improvement?: boolean;
+  resume_url?: string | null; // Tailored resume URL from Agent 4
 }
 
 export interface TodayDataResponse {
@@ -694,6 +745,11 @@ export interface TodayJobsResponse {
   status: string;
   jobs: TodayDataItem[];
   count: number;
+  stats?: {
+    high_match: number;
+    needs_improvement: number;
+    with_roadmap: number;
+  };
 }
 
 export interface TodayHackathonsResponse {
@@ -730,7 +786,9 @@ export async function getTodayJobs(): Promise<TodayJobsResponse> {
  * Get all 10 matched hackathons for current user (for Hackathons page)
  */
 export async function getTodayHackathons(): Promise<TodayHackathonsResponse> {
-  const response = await api.get<TodayHackathonsResponse>("/api/strategist/hackathons");
+  const response = await api.get<TodayHackathonsResponse>(
+    "/api/strategist/hackathons"
+  );
   return response.data;
 }
 
@@ -738,7 +796,9 @@ export async function getTodayHackathons(): Promise<TodayHackathonsResponse> {
  * Get dashboard summary data (5 jobs, 2 hackathons, 2 news)
  */
 export async function getStrategistDashboard(): Promise<StrategistDashboardResponse> {
-  const response = await api.get<StrategistDashboardResponse>("/api/strategist/dashboard");
+  const response = await api.get<StrategistDashboardResponse>(
+    "/api/strategist/dashboard"
+  );
   return response.data;
 }
 

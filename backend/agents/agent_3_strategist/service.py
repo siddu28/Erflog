@@ -294,20 +294,31 @@ Return ONLY the JSON array, no markdown."""
         """
         Process a single user: get their vector and match against all namespaces.
         Also generates AI hot skills recommendations.
+        For jobs with match < 80%, generates roadmaps.
+        For ALL jobs, generates default application text.
         Returns the generated today_data.
         """
         logger.info(f"Processing user: {user_id}")
         
         # Get user profile first (for skills and roles)
+        # Note: Column is 'name' not 'full_name' in the profiles table
         profile_response = self.supabase.table("profiles").select(
-            "skills, target_roles"
+            "skills, target_roles, name, experience_summary"
         ).eq("user_id", user_id).execute()
         
         user_skills = []
         target_roles = []
+        user_profile = {}
         if profile_response.data:
-            user_skills = profile_response.data[0].get("skills", []) or []
-            target_roles = profile_response.data[0].get("target_roles", []) or []
+            profile_data = profile_response.data[0]
+            user_skills = profile_data.get("skills", []) or []
+            target_roles = profile_data.get("target_roles", []) or []
+            user_profile = {
+                "name": profile_data.get("name", "Candidate"),
+                "skills": user_skills,
+                "target_roles": target_roles,
+                "experience_summary": profile_data.get("experience_summary", "")
+            }
         
         # Get user embedding
         user_vector = self._get_user_embedding(user_id)
@@ -323,25 +334,46 @@ Return ONLY the JSON array, no markdown."""
         # Generate AI hot skills based on user profile and matched jobs
         hot_skills = self._generate_hot_skills(user_skills, target_roles, jobs)
         
-        # Build today_data
-        today_data = {
-            "jobs": jobs,
-            "hackathons": hackathons,
-            "news": news,
-            "hot_skills": hot_skills,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "stats": {
-                "jobs_count": len(jobs),
-                "hackathons_count": len(hackathons),
-                "news_count": len(news)
+        # =========================================================================
+        # NEW: Use orchestrator to enrich jobs with roadmaps and application text
+        # This happens at fetch time - no further processing after cron job
+        # =========================================================================
+        try:
+            from .orchestrator import run_orchestration
+            
+            logger.info(f"🎯 Running orchestration for {len(jobs)} jobs...")
+            today_data = run_orchestration(
+                user_id=user_id,
+                user_profile=user_profile,
+                jobs=jobs,
+                hackathons=hackathons,
+                news=news,
+                hot_skills=hot_skills
+            )
+            logger.info(f"✅ Orchestration complete: {today_data.get('stats', {})}")
+            
+        except Exception as e:
+            logger.error(f"❌ Orchestration failed, using basic data: {e}")
+            # Fallback to basic data without enrichment
+            today_data = {
+                "jobs": jobs,
+                "hackathons": hackathons,
+                "news": news,
+                "hot_skills": hot_skills,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "stats": {
+                    "jobs_count": len(jobs),
+                    "hackathons_count": len(hackathons),
+                    "news_count": len(news)
+                }
             }
-        }
         
         # Save to database (upsert - replaces previous day)
         success = self._save_today_data(user_id, today_data)
         
         if success:
-            logger.info(f"✅ Saved today_data for {user_id}: {len(jobs)} jobs, {len(hackathons)} hackathons, {len(news)} news")
+            stats = today_data.get("stats", {})
+            logger.info(f"✅ Saved today_data for {user_id}: {stats.get('jobs_count', 0)} jobs ({stats.get('jobs_with_roadmap', 0)} with roadmaps), {stats.get('hackathons_count', 0)} hackathons, {stats.get('news_count', 0)} news")
         
         return today_data
     
