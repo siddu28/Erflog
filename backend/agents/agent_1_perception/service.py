@@ -129,6 +129,147 @@ class PerceptionService:
                 os.remove(pdf_path)
 
     # =========================================================================
+    # PROFILE SETTINGS UPDATES
+    # =========================================================================
+    
+    async def update_profile_fields(
+        self,
+        user_id: str,
+        name: Optional[str] = None,
+        github_url: Optional[str] = None,
+        linkedin_url: Optional[str] = None
+    ) -> dict:
+        """
+        Update basic profile fields from Settings page.
+        
+        Args:
+            user_id: User's UUID
+            name: New display name
+            github_url: GitHub profile URL
+            linkedin_url: LinkedIn profile URL
+            
+        Returns:
+            Updated profile data
+        """
+        update_data = {}
+        updated_fields = []
+        
+        if name is not None:
+            update_data["name"] = name
+            updated_fields.append("name")
+        
+        if github_url is not None:
+            # Validate GitHub URL format
+            if github_url:  # Only validate if not empty
+                username = extract_username_from_url(github_url)
+                if not username:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid GitHub URL format. Expected: https://github.com/username"
+                    )
+            update_data["github_url"] = github_url
+            updated_fields.append("github_url")
+        
+        if linkedin_url is not None:
+            update_data["linkedin_url"] = linkedin_url
+            updated_fields.append("linkedin_url")
+        
+        if not update_data:
+            return {"status": "no_changes", "updated_fields": [], "user_id": user_id}
+        
+        # Add timestamp
+        update_data["updated_at"] = datetime.utcnow().isoformat()
+        
+        # Update database
+        self.supabase.table("profiles").update(update_data).eq("user_id", user_id).execute()
+        
+        # Update Pinecone metadata if name changed
+        if name:
+            try:
+                self.index.update(
+                    id=user_id,
+                    set_metadata={"name": name},
+                    namespace="users"
+                )
+            except Exception as e:
+                print(f"[Profile] Pinecone update warning: {e}")
+        
+        return {
+            "status": "success", 
+            "updated_fields": updated_fields, 
+            "user_id": user_id,
+            "message": f"Updated: {', '.join(updated_fields)}"
+        }
+    
+    async def update_primary_resume(self, file: UploadFile, user_id: str) -> dict:
+        """
+        Replace user's primary resume.
+        
+        - Deletes old resume from S3
+        - Uploads new resume
+        - Re-processes and updates profile
+        
+        Args:
+            file: New resume PDF file
+            user_id: User's UUID
+            
+        Returns:
+            Updated profile data
+        """
+        # 1. Get current resume_url to delete old file
+        response = self.supabase.table("profiles").select("resume_url").eq("user_id", user_id).execute()
+        
+        if response.data and response.data[0].get("resume_url"):
+            # Delete old file from storage
+            old_file = f"{user_id}.pdf"
+            try:
+                self.supabase.storage.from_("Resume").remove([old_file])
+                print(f"[Resume] Deleted old primary resume: {old_file}")
+            except Exception as e:
+                print(f"[Resume] Warning: Could not delete old file: {e}")
+        
+        # 2. Process new resume (reuse existing method)
+        result = await self.process_resume_upload(file, user_id)
+        
+        return {
+            "status": "success",
+            "message": "Primary resume updated successfully",
+            "resume_url": result.get("resume_url"),
+            "profile": result
+        }
+    
+    async def get_full_profile(self, user_id: str) -> dict:
+        """
+        Get full profile data for Settings page.
+        
+        Returns all profile fields including resume URLs.
+        """
+        response = self.supabase.table("profiles").select("*").eq("user_id", user_id).execute()
+        
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        profile = response.data[0]
+        
+        return {
+            "status": "success",
+            "profile": {
+                "user_id": profile.get("user_id"),
+                "name": profile.get("name"),
+                "email": profile.get("email"),
+                "github_url": profile.get("github_url"),
+                "linkedin_url": profile.get("linkedin_url"),
+                "resume_url": profile.get("resume_url"),  # Primary resume
+                "sec_resume_url": profile.get("sec_resume_url"),  # Secondary/tailored resume
+                "skills": profile.get("skills", []),
+                "target_roles": profile.get("target_roles", []),
+                "onboarding_completed": profile.get("onboarding_completed", False),
+                "quiz_completed": profile.get("quiz_completed", False),
+                "updated_at": profile.get("updated_at")
+            }
+        }
+
+    # =========================================================================
     # ONBOARDING
     # =========================================================================
     
@@ -831,7 +972,8 @@ class PerceptionService:
             "correct": correct_count,
             "total": total,
             "message": f"Great job! You scored {correct_count}/{total}. Welcome to Erflog!",
-            "onboarding_complete": True
+            "onboarding_complete": True,
+            "trigger_cold_start": True  # Signal frontend to trigger cold start
         }
 
     # =========================================================================
