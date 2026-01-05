@@ -460,3 +460,86 @@ async def get_dashboard_insights(user: dict = Depends(get_current_user)):
         raise
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+# =============================================================================
+# SETTINGS ENDPOINTS
+# =============================================================================
+
+class ProfileUpdateRequest(BaseModel):
+    """Request body for updating profile fields"""
+    name: Optional[str] = None
+    github_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
+
+
+@router.get("/settings/profile")
+async def get_settings_profile(user: dict = Depends(get_current_user)):
+    """
+    Get full profile for Settings page (Protected)
+    
+    Returns all profile fields including both resume URLs.
+    """
+    user_id = user["sub"]
+    
+    try:
+        result = await agent1_service.get_full_profile(user_id)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.patch("/settings/profile")
+async def update_settings_profile(
+    request: ProfileUpdateRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Update profile fields from Settings page (Protected)
+    
+    Updates name, github_url, and/or linkedin_url.
+    """
+    user_id = user["sub"]
+    
+    try:
+        result = await agent1_service.update_profile_fields(
+            user_id=user_id,
+            name=request.name,
+            github_url=request.github_url,
+            linkedin_url=request.linkedin_url
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.put("/settings/resume")
+async def update_primary_resume(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Upload new primary resume (Protected)
+    
+    Replaces the existing primary resume:
+    - Deletes old resume from S3
+    - Uploads new resume
+    - Re-processes profile data
+    """
+    user_id = user["sub"]
+    
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(400, "Only PDF files allowed")
+    
+    try:
+        result = await agent1_service.update_primary_resume(file, user_id)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
