@@ -54,6 +54,8 @@ async def generate_resume_authenticated(
     """
     try:
         user_id = user.get("sub") or user.get("user_id")
+        print(f"🎯 [Agent 4] Generate resume for user: {user_id}")
+        
         if not user_id:
             raise HTTPException(status_code=401, detail="User ID not found in token")
         
@@ -62,11 +64,18 @@ async def generate_resume_authenticated(
             job_description=request.job_description,
             job_id=request.job_id
         )
+        
+        print(f"📝 [Agent 4] Service result: {result.get('success')}, pdf_url: {result.get('pdf_url', 'N/A')[:50] if result.get('pdf_url') else 'None'}")
+        
         return GenerateResumeResponse(**result)
     
     except ValueError as e:
+        print(f"❌ [Agent 4] ValueError: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        import traceback
+        print(f"❌ [Agent 4] Exception: {e}")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 

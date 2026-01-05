@@ -84,15 +84,15 @@ class ResumeOutput(BaseModel):
 class GenerateResumeResponse(BaseModel):
     """Response from resume generation."""
     success: bool
-    user_id: str
-    original_profile: dict
-    optimized_resume: dict
-    pdf_path: str
+    user_id: str = ""
+    original_profile: Optional[dict] = {}
+    optimized_resume: Optional[dict] = {}
+    pdf_path: str = ""
     pdf_url: Optional[str] = ""  # Supabase storage URL
     recruiter_email: Optional[str] = None
-    application_status: Literal["pending", "ready", "applied", "rejected"]
-    processing_time_ms: int
-    message: str
+    application_status: Literal["pending", "ready", "applied", "rejected", "failed"] = "pending"
+    processing_time_ms: int = 0
+    message: str = ""
 
 
 class AnalyzeRejectionResponse(BaseModel):

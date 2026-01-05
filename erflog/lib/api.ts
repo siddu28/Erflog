@@ -486,7 +486,7 @@ export async function generateTailoredResume(
   jobDescription: string,
   jobId?: string
 ): Promise<GenerateTailoredResumeResponse> {
-  const response = await api.post("/api/agent4/generate-resume", {
+  const response = await api.post("/agent4/generate-resume", {
     job_description: jobDescription,
     job_id: jobId,
   });

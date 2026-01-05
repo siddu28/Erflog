@@ -588,8 +588,27 @@ def rewrite_resume_content(user_profile: dict, job_description: str) -> dict:
 # =============================================================================
 
 def fetch_user_profile(user_id: str) -> dict:
-    """Alias for fetch_user_profile_by_uuid for backward compatibility."""
-    return fetch_user_profile_by_uuid(user_id)
+    """
+    Fetch user profile from Supabase by user_id (UUID).
+    
+    Args:
+        user_id: The UUID of the user.
+    
+    Returns:
+        Profile dict or empty dict if not found.
+    """
+    supabase_url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+    if not supabase_url or not key:
+        print("⚠️ Missing Supabase credentials")
+        return {}
+    
+    supabase = create_client(supabase_url.rstrip('/'), key)
+    response = supabase.table("profiles").select("*").eq("user_id", user_id).execute()
+    
+    if response.data and len(response.data) > 0:
+        return response.data[0]
+    return {}
 
 
 def build_resume_from_profile(profile: dict) -> dict:

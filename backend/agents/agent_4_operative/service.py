@@ -112,7 +112,6 @@ class Agent4Service:
         if not self._initialized:
             from .graph import app
             from .tools import (
-                fetch_user_profile_by_uuid,
                 fetch_user_profile,
                 build_resume_from_profile,
                 rewrite_resume_content,
@@ -122,7 +121,7 @@ class Agent4Service:
             from .pdf_engine import generate_pdf
             
             self.app = app
-            self.fetch_user_profile_by_uuid = fetch_user_profile_by_uuid
+            self.fetch_user_profile_by_uuid = fetch_user_profile  # Alias for compatibility
             self.fetch_user_profile = fetch_user_profile
             self.build_resume_from_profile = build_resume_from_profile
             self.rewrite_resume_content = rewrite_resume_content
