@@ -161,7 +161,7 @@ export default function Sidebar() {
               }
             >
               <Settings size={20} />
-              Evolution
+              Settings
             </Link>
           </li>
         </ul>
