@@ -178,7 +178,7 @@ export default function Settings() {
           animate={{ opacity: 1, y: 0 }}
         >
           <h1 className="font-serif text-4xl font-bold text-gray-900 mb-2">
-            Evolution Settings
+            Settings
           </h1>
           <p className="text-gray-600 mb-8">
             Configure your Erflog experience and manage your profile.
