@@ -11,6 +11,9 @@ build/
 # Environment & Credentials
 .env
 .env.*
+.env.local
+.env.development
+.env.test
 # NOTE: credential.json is ALLOWED for Cloud Run deployment
 # credential.json  # COMMENTED OUT - needed in Docker for Cloud Run
 # backend/credential.json
@@ -22,6 +25,9 @@ build/
 htmlcov/
 .tox/
 *.test.py
+tests/
+pytest.ini
+conftest.py
 
 # IDE
 .vscode/
@@ -55,6 +61,7 @@ npm-debug.log
 
 # Agent 4 outputs
 backend/outputs/
+outputs/
 debug_*.pdf
 debug_*.json
 
@@ -72,16 +79,27 @@ temp/
 .gitignore
 .gitattributes
 
-# Documentation
-*.md
+# Documentation (keep README.md for reference in container if needed)
 docs/
 
 # Docker build artifacts
 .docker/
 .dockerignore
-Dockerfile
 
 # Misc
 .editorconfig
 .env.example
 *.pem
+
+# Redis data (if any local dumps exist)
+dump.rdb
+*.rdb
+
+# Python cache/mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Jupyter notebooks (not needed in production)
+*.ipynb
+.ipynb_checkpoints/

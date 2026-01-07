@@ -51,3 +51,5 @@ backend/credential.json
 credential.json
 *.json.credentials
 
+*.yaml
+
